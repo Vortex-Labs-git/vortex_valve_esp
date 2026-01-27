@@ -2,7 +2,9 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 
+#include "global_var.h"
 #include "led_indicators.h"
 #include "valve_motor.h"
 #include "limit_switch.h"
@@ -31,25 +33,76 @@ LedIndicator greenLED = { GREEN_LED_PIN };
 
 
 
-// motor_init(&motor);
-// limit_switch_init(&closeLimit);
-// limit_switch_init(&openLimit);
-
-// led_init(&redLED);
-// led_init(&greenLED);
-
 
 static const char *TAG = "VALVE_PROCESS";
 
 
+
+void init_valve_system(void) {
+    motor_init(&motor);
+    limit_switch_init(&closeLimit);
+    limit_switch_init(&openLimit);
+
+    led_init(&redLED);
+    led_init(&greenLED);
+
+    led_on(&redLED);
+    led_on(&greenLED);
+
+    vTaskDelay(pdMS_TO_TICKS(500));
+
+    led_off(&redLED);
+    led_off(&greenLED);
+
+    ESP_LOGI(TAG, "Valve system initialized");
+}
+
+
+
 int valve_test(void)
 {
-    if (limit_switch_click(&closeLimit) == 0) {
+    int closeLimitState = limit_switch_click(&closeLimit);
+    int openLimitState = limit_switch_click(&openLimit);
+
+    xSemaphoreTake(valveMutex, portMAX_DELAY);
+
+    switch (closeLimitState)
+    {
+    case 0:
+        valveData.close_limit_available = false;
+        xSemaphoreGive(valveMutex);
         return 111;
+    case 1:
+        valveData.close_limit_available = true;
+        valveData.close_limit_click = false;
+        break;
+    case 10:
+        valveData.close_limit_available = true;
+        valveData.close_limit_click = true;
+        break;
+    default:
+        break;
     }
-    if (limit_switch_click(&openLimit) == 0) {
+
+    switch (openLimitState)
+    {
+    case 0:
+        valveData.open_limit_available = false;
+        xSemaphoreGive(valveMutex);
         return 121;
+    case 1:
+        valveData.open_limit_available = true;
+        valveData.open_limit_click = false;
+        break;
+    case 10:
+        valveData.open_limit_available = true;
+        valveData.open_limit_click = true;
+        break;
+    default:
+        break;
     }
+
+    xSemaphoreGive(valveMutex);
     return 0;
 }
 
@@ -61,9 +114,7 @@ int motor_open(void) {
 
     errorCode = valve_test();
 
-    if (errorCode != 0) return errorCode;
-
-    if (motor.state != 1) {
+    if (motor.state != 1 && errorCode == 0) {
         bool turn_state = true;
         
         while (turn_state) {
@@ -93,25 +144,34 @@ int motor_open(void) {
         led_off(&redLED);
         ESP_LOGI(TAG, "motor is opened");
         motor.state = 1;
+
+        xSemaphoreTake(valveMutex, portMAX_DELAY);
+        valveData.is_open = true;
+        valveData.is_close = false;
+        valveData.angle = 90;
+        xSemaphoreGive(valveMutex);
     } else {
         led_on(&redLED);
         ESP_LOGE(TAG, "motor open error: %d", errorCode);
+
+        xSemaphoreTake(valveMutex, portMAX_DELAY);
+        valveData.is_open = false;
+        sprintf(valveData.error_msg, "Motor open error code: %d", errorCode);
+        xSemaphoreGive(valveMutex);
     }
     
     return errorCode;
 }
 
 
-int motorClose(void) {
+int motor_close(void) {
     unsigned long op_start = xTaskGetTickCount() * portTICK_PERIOD_MS;
     const unsigned long op_timeout = 10000;
     int errorCode = 200;
 
     errorCode = valve_test();
 
-    if (errorCode != 0) return errorCode;
-
-    if (motor.state != 10) {
+    if (motor.state != 10 && errorCode == 0) {
         bool turn_state = true;
 
         while (turn_state) {
@@ -141,9 +201,20 @@ int motorClose(void) {
         led_off(&redLED);
         ESP_LOGI(TAG, "motor is closed");
         motor.state = 0;
+
+        xSemaphoreTake(valveMutex, portMAX_DELAY);
+        valveData.is_open = false;
+        valveData.is_close = true;
+        valveData.angle = 0;
+        xSemaphoreGive(valveMutex);
     } else {
         led_on(&redLED);
         ESP_LOGE(TAG, "motor close error: %d", errorCode);
+
+        xSemaphoreTake(valveMutex, portMAX_DELAY);
+        valveData.is_close = false;
+        sprintf(valveData.error_msg, "Motor close error code: %d", errorCode);
+        xSemaphoreGive(valveMutex);
     }
     
     return errorCode;

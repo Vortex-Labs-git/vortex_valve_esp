@@ -5043,6 +5043,16 @@
                     {
                         "children": [],
                         "depends_on": null,
+                        "help": "Reset WiFi storage to default values.",
+                        "id": "ESP_WIFI_STA_MODE_RESET",
+                        "name": "ESP_WIFI_STA_MODE_RESET",
+                        "range": null,
+                        "title": "Reset WiFi Storage to Default",
+                        "type": "bool"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
                         "help": "SSID (network name) for the example's sta to connect to.",
                         "id": "ESP_WIFI_STA_SSID",
                         "name": "ESP_WIFI_STA_SSID",
@@ -5094,6 +5104,16 @@
                         "name": "WIFI_VALVE_ID",
                         "range": null,
                         "title": "WiFi Valve ID",
+                        "type": "string"
+                    },
+                    {
+                        "children": [],
+                        "depends_on": null,
+                        "help": "WebSocket passkey for the device.",
+                        "id": "WS_PASSKEY_VALUE",
+                        "name": "WS_PASSKEY_VALUE",
+                        "range": null,
+                        "title": "WebSocket Passkey",
                         "type": "string"
                     }
                 ],

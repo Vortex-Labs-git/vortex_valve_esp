@@ -1,3 +1,4 @@
+#include "sdkconfig.h" 
 #include "esp_log.h"
 #include "cJSON.h"
 #include "mqtt_client.h"
@@ -5,16 +6,20 @@
 #include "mqtt_client_fn.h"
 #include "mqtt_state_fn.h"
 
-#define MQTT_BROKER_URI "mqtt://10.217.90.172"
+#define MQTT_BROKER_URI CONFIG_MQTT_BROKER_URI
+// #define MQTT_BROKER_URI  "mqtts://82.29.161.52:8883"
 #define DEVICE_ID CONFIG_WIFI_VALVE_ID
 #define BASE_TOPIC "vortex_device/wifi_valve/" DEVICE_ID
 
+#define MAX_MQTT_PAYLOAD 4096
 
 static const char *TAG = "MQTT_CLIENT";
 static esp_mqtt_client_handle_t mqtt_client;
 static bool mqtt_connected = false;
 static TaskHandle_t mqtt_pub_task_handle = NULL;
 
+extern const uint8_t _binary_ca_cert_pem_start[];
+extern const uint8_t _binary_ca_cert_pem_end[];
 
 // 82.29.161.52
 // mosquitto_pub -h 82.29.161.52 -p 1883   -t test/topic   -m '{"device":"pc","value":1234567890}'
@@ -25,6 +30,11 @@ static void mqtt_publish_message(const char *sub_topic, cJSON *message)
 {
     if (mqtt_client == NULL) {
         ESP_LOGE(TAG, "MQTT client not initialized");
+        return;
+    }
+
+    if (!mqtt_connected) {
+        ESP_LOGW(TAG, "MQTT not connected, skipping publish");
         return;
     }
 
@@ -103,7 +113,10 @@ void mqtt_publish_valve_data_task(void *pvParameters) {
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     char topic[128];
-    char data[512];
+    static char *rx_data = NULL;
+    static int rx_data_len = 0;
+    static int rx_bytes_received = 0;
+
 
     esp_mqtt_event_handle_t event = event_data;
     esp_mqtt_client_handle_t client = event->client;
@@ -112,6 +125,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT connected");
+            mqtt_connected = true;
 
             // subscribe process init
             char topic_cmd_data[128];
@@ -131,6 +145,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+            mqtt_connected = false;
             break;
 
         case MQTT_EVENT_SUBSCRIBED:
@@ -144,33 +159,56 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_DATA:
             ESP_LOGI(TAG, "MQTT_EVENT_DATA");
 
-            // Copy topic
-            if (event->topic_len < sizeof(topic)) {
-                memcpy(topic, event->topic, event->topic_len);
-                topic[event->topic_len] = '\0';
-            } else {
-                ESP_LOGE(TAG, "Topic too long");
-                break;
-            }
-            // Copy data
-            if (event->data_len < sizeof(data)) {
-                memcpy(data, event->data, event->data_len);
-                data[event->data_len] = '\0';
-            } else {
-                ESP_LOGE(TAG, "Payload too large");
-                break;
+            if (event->current_data_offset == 0) {
+                // Copy topic
+                if (event->topic_len < sizeof(topic)) {
+                    memcpy(topic, event->topic, event->topic_len);
+                    topic[event->topic_len] = '\0';
+                } else {
+                    ESP_LOGE(TAG, "Topic too long");
+                    break;
+                }
+                // Copy data
+                rx_data_len = event->total_data_len;
+                rx_bytes_received = 0;
+                if (rx_data_len > MAX_MQTT_PAYLOAD) {
+                    ESP_LOGE(TAG, "Payload too large");
+                    break;
+                }
+                rx_data = malloc(rx_data_len + 1);
+                if (!rx_data) {
+                    ESP_LOGE(TAG, "Payload memory allocation failed");
+                    break;
+                }
             }
 
+            
+            if (event->data_len > 0){
+                memcpy(rx_data + event->current_data_offset, event->data, event->data_len);
+                rx_bytes_received += event->data_len;
+            }
+            
+            if(rx_bytes_received < rx_data_len) {
+                break;
+            }
+            
+            rx_data[rx_data_len] = '\0'; 
+                
             ESP_LOGI(TAG, "RX topic: %s", topic);
-            ESP_LOGI(TAG, "RX data : %s", data);
+            ESP_LOGI(TAG, "RX data : %s", rx_data);
 
             if (strstr(topic, "/cmd_data")) {
-                mqtt_handle_cmd_data(data);
+                mqtt_handle_cmd_data(rx_data);
             } else if (strstr(topic, "/control_data")) {
-                mqtt_handle_control_data(data);
+                mqtt_handle_control_data(rx_data);
             } else {
-                ESP_LOGW(TAG, "Unknown topic: %s", topic);
+                mqtt_handle_topic(rx_data);
             }
+
+            free(rx_data);
+            rx_data = NULL;
+            rx_data_len = 0;
+            rx_bytes_received = 0;
 
             break;
 
@@ -198,10 +236,13 @@ void start_mqtt_client(void)
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = MQTT_BROKER_URI,
         .credentials.client_id = DEVICE_ID,
+        .broker.verification.certificate = (const char *)_binary_ca_cert_pem_start,
         .network.disable_auto_reconnect = false,
+        .session.keepalive = 60,
     };
 
     ESP_LOGI("MQTT", "Broker URI = %s", MQTT_BROKER_URI);
+    ESP_LOGI("TLS", "CA cert first byte: %02X", _binary_ca_cert_pem_start[0]);
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
 
     if (mqtt_client == NULL) {

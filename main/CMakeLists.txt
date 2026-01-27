@@ -1,6 +1,8 @@
 idf_component_register(SRCS 
                             "softap_sta.c"
                             "global_var.c"
+                            "eeprom_fn/wifi_storage.c"
+                            "eeprom_fn/shedule_storage.c"
                             "websocket_fn/websocket_server_fn.c"
                             "websocket_fn/websocket_state_fn.c"
                             "time_func.c"
@@ -10,14 +12,17 @@ idf_component_register(SRCS
                             "valve_fn/valve_motor.c"
                             "valve_fn/limit_switch.c"
                             "valve_fn/valve_process.c"
-                    INCLUDE_DIRS 
-                        "."
-                    REQUIRES 
-                        esp_wifi 
-                        mqtt 
-                        nvs_flash 
-                        json 
-                        esp_http_server 
-                        esp_event
-                        driver
-                        )
+                            "main_process.c"
+                        INCLUDE_DIRS 
+                            "."
+                        EMBED_TXTFILES
+                            "mqtt_fn/ca_cert.pem"
+                        REQUIRES 
+                            esp_wifi 
+                            mqtt 
+                            nvs_flash 
+                            json 
+                            esp_http_server 
+                            esp_event
+                            driver
+                            )

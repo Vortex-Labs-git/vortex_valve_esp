@@ -430,6 +430,7 @@ CONFIG_ESP_MAX_STA_CONN_AP=4
 #
 # STA Configuration
 #
+# CONFIG_ESP_WIFI_STA_MODE_RESET is not set
 CONFIG_ESP_WIFI_STA_SSID="OPPO_A78"
 CONFIG_ESP_WIFI_STA_PASSWD="12345679"
 CONFIG_ESP_WIFI_STA_MAXIMUM_RETRY=5
@@ -448,6 +449,7 @@ CONFIG_ESP_WIFI_STA_MAXIMUM_RETRY=5
 # Device Data Configuration
 #
 CONFIG_WIFI_VALVE_ID="VA202601001"
+CONFIG_WS_PASSKEY_VALUE="12345"
 # end of Device Data Configuration
 
 #
@@ -493,7 +495,7 @@ CONFIG_GREEN_LED_PIN=16
 #
 # MQTT client Configuration
 #
-CONFIG_MQTT_BROKER_URI="mqtt://10.217.90.172"
+CONFIG_MQTT_BROKER_URI="mqtts://82.29.161.52:8883"
 CONFIG_MQTT_BASE_TOPIC="vortex_device/wifi_valve/"
 # end of MQTT client Configuration
 # end of Device Configuration

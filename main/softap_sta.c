@@ -18,15 +18,19 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
+#include "global_var.h"
+#include "eeprom_fn/wifi_storage.h"
 #include "time_func.h"
 #include "websocket_fn/websocket_server_fn.h"
 #include "mqtt_fn/mqtt_client_fn.h"
 #include "valve_fn/valve_process.h"
+#include "main_process.h"
 
 /* STA Configuration */
 #define ESP_WIFI_STA_SSID                   CONFIG_ESP_WIFI_STA_SSID 
 #define ESP_WIFI_STA_PASSWD                 CONFIG_ESP_WIFI_STA_PASSWD  
 #define ESP_WIFI_STA_MAXIMUM_RETRY          CONFIG_ESP_WIFI_STA_MAXIMUM_RETRY
+#define ESP_WIFI_STA_MODE_RESET             CONFIG_ESP_WIFI_STA_MODE_RESET
 
 
 /* AP Configuration */
@@ -36,6 +40,10 @@
 #define MAX_STA_CONN                        CONFIG_ESP_MAX_STA_CONN_AP
 
 
+SemaphoreHandle_t valveMutex = NULL;
+SemaphoreHandle_t serverMutex = NULL;
+
+static const char *TAG_MAIN = "MAIN LOOP";
 static const char *TAG_AP = "WiFi SoftAP";
 static const char *TAG_STA = "WiFi Sta";
 
@@ -52,12 +60,18 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         ESP_LOGI(TAG_STA, "STA Started. Connecting to Router...");
         esp_wifi_connect();
+
+        led_blink(&greenLED, 500);
+        led_blink(&redLED, 500);
     }
     
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         ESP_LOGI(TAG_STA, "Router Disconnected/Not Found.");
 
         stop_mqtt_client();
+
+        led_off(&greenLED);
+        led_off(&redLED);
 
         // If Router is lost, ensure AP is ON
         wifi_mode_t current_mode;
@@ -66,12 +80,18 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         if (current_mode == WIFI_MODE_STA) {
             ESP_LOGI(TAG_STA, "Switching to AP+STA mode (Turning AP ON)...");
             esp_wifi_set_mode(WIFI_MODE_APSTA);
+
+            led_blink2(&greenLED, 500, 2000);
+            led_blink2(&redLED, 500, 2000);
         }
 
         if (s_ap_client_count == 0) {
             ESP_LOGI(TAG_STA, "Retrying Router connection...");
             vTaskDelay(pdMS_TO_TICKS(1000));
             esp_wifi_connect();
+
+            led_blink(&greenLED, 500);
+            led_blink(&redLED, 500);
         } else {
             ESP_LOGI(TAG_STA, "AP is busy. NOT searching for router.");
         }
@@ -87,6 +107,9 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         esp_wifi_set_mode(WIFI_MODE_STA);
 
         start_mqtt_client();
+
+        led_blink2(&greenLED, 500, 2000);
+        led_off(&redLED);
     }
 
     // -----------------------------------------------------------
@@ -96,6 +119,10 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
         ESP_LOGI(TAG_AP, "Client joined AP: "MACSTR, MAC2STR(event->mac));
         start_webserver();
+
+        led_blink(&greenLED, 500);
+        led_off(&redLED);
+
         s_ap_client_count++;
 
         // A client is using the AP. Stop distracting the radio with STA scans.
@@ -107,12 +134,19 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
         ESP_LOGI(TAG_AP, "Client left AP: "MACSTR, MAC2STR(event->mac));
         stop_webserver();
+
+        led_off(&greenLED);
+        led_off(&redLED);
+
         if (s_ap_client_count > 0) s_ap_client_count--;
 
         // AP is free. Go back to looking for the Router.
         if (s_ap_client_count == 0) {
             ESP_LOGI(TAG_AP, "No clients on AP. Resuming Router search...");
             esp_wifi_connect();
+
+            led_blink(&greenLED, 500);
+            led_blink(&redLED, 500);
         }
     }
 
@@ -156,15 +190,19 @@ esp_netif_t *wifi_init_sta(void)
     // Create netifs
     esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
 
-    wifi_config_t wifi_sta_config = {
-        .sta = {
-            .ssid = ESP_WIFI_STA_SSID,
-            .password = ESP_WIFI_STA_PASSWD,
-            .scan_method = WIFI_ALL_CHANNEL_SCAN,
-            .threshold.authmode = WIFI_AUTH_WPA2_PSK,
-            .sae_pwe_h2e = WPA3_SAE_PWE_BOTH,
-        },
-    };
+    wifi_config_t wifi_sta_config = { 0 };   // IMPORTANT
+
+    memcpy(wifi_sta_config.sta.ssid,
+           wifiStaData.ssid,
+           sizeof(wifi_sta_config.sta.ssid));
+
+    memcpy(wifi_sta_config.sta.password,
+           wifiStaData.password,
+           sizeof(wifi_sta_config.sta.password));
+
+    wifi_sta_config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    wifi_sta_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    wifi_sta_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_sta_config) );
 
@@ -223,7 +261,32 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
+
+#if CONFIG_ESP_WIFI_STA_MODE_RESET
+    wifi_storage_restore_default();
+#endif
+
+
+    wifi_storage_load();
+
+    valveMutex = xSemaphoreCreateMutex();
+    if (valveMutex == NULL) {
+        ESP_LOGE(TAG_MAIN, "Failed to create valveMutex");
+        return;
+    }
+
+    serverMutex = xSemaphoreCreateMutex();
+    if (serverMutex == NULL) {
+        ESP_LOGE(TAG_MAIN, "Failed to create serverMutex");
+        return;
+    }
+
+    init_valve_system();
+
     wifi_init_smart_mode();
 
     obtain_time();
+
+    // xTaskCreate(valve_sync_process, "valve_sync_process", 4096, NULL, 5, NULL);
+
 }

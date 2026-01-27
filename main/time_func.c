@@ -6,7 +6,9 @@
 #include "time_func.h"
 
 
-static const char *TAG = "TimeSync";
+static const char *TAG_TIME = "TimeSync";
+
+
 
 // Callback function when SNTP sync is complete. if time isnt synced try in loop
 void obtain_time(void)
@@ -29,15 +31,15 @@ void obtain_time(void)
     time_t now = 0;
     struct tm timeinfo = { 0 };
     while (timeinfo.tm_year < (2020 - 1900)) {
-        ESP_LOGI(TAG, "Waiting for time to sync...");
+        ESP_LOGI(TAG_TIME, "Waiting for time to sync...");
         vTaskDelay(pdMS_TO_TICKS(2000));
         time(&now); // Get the current time
         localtime_r(&now, &timeinfo);
     }
 
-    ESP_LOGI(TAG, "Time synchronized successfully");
+    ESP_LOGI(TAG_TIME, "Time synchronized successfully");
     
-    ESP_LOGI(TAG, "Current time: %04d-%02d-%02d %02d:%02d:%02d",
+    ESP_LOGI(TAG_TIME, "Current time: %04d-%02d-%02d %02d:%02d:%02d",
              timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 }

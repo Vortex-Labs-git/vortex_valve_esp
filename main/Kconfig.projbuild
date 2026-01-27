@@ -32,15 +32,21 @@ menu "WiFi Mode Configuration"
     menu "STA Configuration"
         comment "STA Configuration"
 
+        config ESP_WIFI_STA_MODE_RESET
+            bool "Reset WiFi Storage to Default"
+            default n
+            help
+                Reset WiFi storage to default values.
+
         config ESP_WIFI_STA_SSID
             string "WiFi SSID"
-            default "otherapssid"
+            default "sta_ssid"
             help
                 SSID (network name) for the example's sta to connect to.
 
         config ESP_WIFI_STA_PASSWD
             string "WiFi Password"
-            default "otherappassword"
+            default "sta_password"
             help
                 WiFi password for the example to use.
 
@@ -63,6 +69,12 @@ menu "Device Configuration"
             default "VA202601001"
             help
                 Wifi valve device Id.
+
+        config WS_PASSKEY_VALUE
+            string "WebSocket Passkey"
+            default "12345"
+            help
+                WebSocket passkey for the device.
 
     endmenu
 

@@ -2,6 +2,8 @@
 
 
 
+
+
 // Initialize the global variable 'serverData'
 SetData serverData = {
     .schedule_control   = false,
@@ -19,6 +21,15 @@ SetControl serverControl = {
     .sensor_lower_limit = 0
 };
 
+
+
+
+// Initialize the global variable 'wifiStaData'
+GetWifi wifiStaData = {
+    .ssid       = "",
+    .password   = "",
+    .set_wifi  = false
+};
 
 // Initialize the global variable 'valveData'
 GetData valveData = {

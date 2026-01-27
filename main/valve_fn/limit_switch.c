@@ -15,9 +15,12 @@ void limit_switch_init(LimitSwitches *switches) {
 
 int limit_switch_click(LimitSwitches *switches) {
     int state;
-    if (gpio_get_level(switches->pinA) == 1 && gpio_get_level(switches->pinB) == 0) {
+    int pinA_state = gpio_get_level(switches->pinA);
+    int pinB_state = gpio_get_level(switches->pinB);
+
+    if (pinA_state == 1 && pinB_state == 0) {
         state = 10;  // clicked
-    } else if (gpio_get_level(switches->pinA) == 0 && gpio_get_level(switches->pinB) == 1) {
+    } else if (pinA_state == 0 && pinB_state == 1) {
         state = 1;   // not clicked
     } else {
         state = 0;   // error

@@ -5,6 +5,7 @@
 
 void mqtt_handle_cmd_data(const char *data);
 void mqtt_handle_control_data(const char *data);
+void mqtt_handle_topic(const char *data);
 
 cJSON* create_valve_status();
 cJSON* create_valve_state_data();
