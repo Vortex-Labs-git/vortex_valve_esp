@@ -1,7 +1,7 @@
 {
     "version":            "1.2",
     "project_name":       "WiFi_valve",
-    "project_version":    "373de55-dirty",
+    "project_version":    "3d4780a-dirty",
     "project_path":       "/home/hp/Documents/vortex/WiFi_valve",
     "idf_path":           "/home/hp/esp/v5.4.2/esp-idf",
     "build_dir":          "/home/hp/Documents/vortex/WiFi_valve/build",
