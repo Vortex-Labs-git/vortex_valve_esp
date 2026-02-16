@@ -77,7 +77,7 @@ esp_err_t schedule_storage_load(ScheduleInfo *scheList,
     }
 
     // First call to get required blob size
-    err = nvs_get_blob(handle, SHEDULE_NVS_KEY, NULL, &size);
+    err = nvs_get_blob(handle, SHEDULE_NVS_KEY, scheList, &size);
     if (err != ESP_OK) {
         nvs_close(handle);
         return err;
