@@ -4,15 +4,30 @@
 #include "websocket_server_fn.h"
 #include "websocket_state_fn.h"
 
+
+/*---------------------------------------------------------------
+ * Configuration
+ *--------------------------------------------------------------*/
+
+// Maximum number of connected WiFi stations
 #define EXAMPLE_MAX_STA_CONN 5
 #define MAX_CLIENTS 10
 
+// Flag to indicate whether client is authorized
 bool connection_authorized = false;
 static const char *TAG_WEBSERVER = "WEB SERVER";
 
+// HTTP server handle
 httpd_handle_t esp_server = NULL;
 
-// Stop the web server
+
+/*===============================================================
+ *                STOP WEB SERVER
+ *==============================================================*/
+
+/**
+ * @brief Stops the running web server and resets state.
+ */
 void stop_webserver(void)
 {
     if (esp_server) {
@@ -23,6 +38,17 @@ void stop_webserver(void)
 }
 
 
+/*===============================================================
+ *          ASYNCHRONOUS WEBSOCKET BROADCAST FUNCTION
+ *==============================================================*/
+
+/**
+ * @brief Send JSON message asynchronously to all connected
+ *        WebSocket clients.
+ * 
+ * @param arg Pointer to dynamically allocated JSON string.
+ *            Memory will be freed inside this function.
+ */
 void websocket_async_send(void *arg) 
 {
     char *json_string = (char *)arg;
@@ -59,16 +85,27 @@ void websocket_async_send(void *arg)
 
 
 
-// WedServer handler
+/*===============================================================
+ *                WEBSOCKET REQUEST HANDLER
+ *==============================================================*/
+
+/**
+ * @brief WebSocket handler function
+ * 
+ * Handles:
+ *  - Initial WebSocket handshake (HTTP GET)
+ *  - Incoming WebSocket messages (TEXT frames)
+ */
 static esp_err_t ws_handler(httpd_req_t *req)
 {
-    // Handle the initial Handshake (GET request)
+    /*----------------- WebSocket Handshake -----------------*/
     if (req->method == HTTP_GET) {
         ESP_LOGI(TAG_WEBSERVER, "Handshake done, the new connection was opened");
         return ESP_OK;
     }
 
-    // Setup the frame structure to receive data
+    /*----------------- Receive WebSocket Frame -----------------*/
+
     httpd_ws_frame_t ws_pkt;
     uint8_t *buf = NULL;
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
@@ -106,7 +143,18 @@ static esp_err_t ws_handler(httpd_req_t *req)
 
 
 
-// Start Web Server 
+
+/*===============================================================
+ *                START WEB SERVER
+ *==============================================================*/
+
+/**
+ * @brief Initialize and start HTTP + WebSocket server.
+ * 
+ * Registers:
+ *    URI: /ws
+ *    Type: WebSocket
+ */
 httpd_handle_t start_webserver(void)
 {
     if (esp_server != NULL) {

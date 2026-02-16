@@ -9,15 +9,30 @@
 #include "time_func.h"
 #include "eeprom_fn/wifi_storage.h"
 
+
+/*---------------------------------------------------------------
+ * Configuration
+ *--------------------------------------------------------------*/
+
+// Device ID from menuconfig
 #define DEVICE_ID CONFIG_WIFI_VALVE_ID
+
+// WebSocket authentication passkey (menuconfig)
 #define PASSKEY_VALUE CONFIG_WS_PASSKEY_VALUE
 
 static const char *TAG = "STATE UPDATE OFFLINE";
 
 
 
+/*===============================================================
+ *                  SEND DEVICE BASIC INFO
+ *==============================================================*/
 
-// Send device information
+/**
+ * @brief Send device identification information via WebSocket.
+ * 
+ * This is typically sent after successful authentication.
+ */
 void send_device_info(void) {
     if (esp_server == NULL) return;
 
@@ -42,11 +57,24 @@ void send_device_info(void) {
 }
 
 
-// Send valve basic data
+
+/*===============================================================
+ *                  SEND VALVE DATA (OFFLINE MODE)
+ *==============================================================*/
+
+/**
+ * @brief Send complete valve state data via WebSocket.
+ * 
+ * Includes:
+ *   - Controller state
+ *   - Valve position
+ *   - Limit switch state
+ *   - Error message
+ */
 void send_device_data(void) {
     if (esp_server == NULL) return;
 
-    // Lock data
+    /*----------------- Copy Shared Data Safely -----------------*/
     GetData localCopy;
     xSemaphoreTake(valveMutex, portMAX_DELAY);
     localCopy = valveData;
@@ -55,7 +83,8 @@ void send_device_data(void) {
     char timestamp[25];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
-    // Root object
+
+    /*----------------- Create Root JSON -----------------*/
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "event", "valve_data");
     cJSON_AddStringToObject(json, "timestamp", timestamp);
@@ -102,8 +131,22 @@ void send_device_data(void) {
 }
 
 
-// offline data communication
+
+/*===============================================================
+ *                OFFLINE EVENT HANDLER
+ *==============================================================*/
+
+/**
+ * @brief Handles WebSocket events after authentication.
+ * 
+ * Supported events:
+ *   - device_basic_info
+ *   - set_valve_basic
+ *   - set_valve_wifi
+ */
 void offline_data(cJSON *event, cJSON *json) {
+
+    /*----------------- DEVICE BASIC INFO REQUEST -----------------*/
     if ( strcmp(event->valuestring, "device_basic_info") == 0) {
         ESP_LOGI(TAG, "Event matched: device_basic_info");
 
@@ -126,6 +169,7 @@ void offline_data(cJSON *event, cJSON *json) {
         } else {
             ESP_LOGW(TAG, "\"data\" is false or missing");
         }
+    /*----------------- SET VALVE BASIC CONTROL -----------------*/
     } else if ( strcmp(event->valuestring, "set_valve_basic") == 0) {
         ESP_LOGI(TAG, "Event matched: set_valve_basic");
         SetData localCopy;
@@ -162,6 +206,7 @@ void offline_data(cJSON *event, cJSON *json) {
         }
 
     }
+    /*----------------- UPDATE WIFI CREDENTIALS -----------------*/
     else if ( strcmp(event->valuestring, "set_valve_wifi") == 0) {
         ESP_LOGI(TAG, "Event matched: set_valve_wifi");
 
@@ -205,7 +250,19 @@ void offline_data(cJSON *event, cJSON *json) {
 }
 
 
-// Extract the json msg
+
+
+/*===============================================================
+ *                  PROCESS WEBSOCKET MESSAGE
+ *==============================================================*/
+
+/**
+ * @brief Entry point for WebSocket JSON message processing.
+ * 
+ * Handles:
+ *   - Authentication (passkey validation)
+ *   - Routing to offline_data after authorization
+ */
 void process_message(const char *payload, bool *connection_authorized) {
 
     // Parse the JSON string into a cJSON object
@@ -224,9 +281,12 @@ void process_message(const char *payload, bool *connection_authorized) {
     }
 
 
+    /*----------------- If Already Authorized -----------------*/
     if ( *connection_authorized) {
         offline_data( event, json);
-    } else {
+    } 
+    /*----------------- Authentication Phase -----------------*/
+    else {
         if (strcmp(event->valuestring, "request_device_info") == 0) {
             ESP_LOGI(TAG, "Event matched: request_device_info");
 
