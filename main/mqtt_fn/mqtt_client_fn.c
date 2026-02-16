@@ -6,11 +6,21 @@
 #include "mqtt_client_fn.h"
 #include "mqtt_state_fn.h"
 
+
+/*---------------------------------------------------------------
+ * Configuration Macros
+ *--------------------------------------------------------------*/
+
+// MQTT Broker URI (set in menuconfig)
 #define MQTT_BROKER_URI CONFIG_MQTT_BROKER_URI
 // #define MQTT_BROKER_URI  "mqtts://82.29.161.52:8883"
 #define DEVICE_ID CONFIG_WIFI_VALVE_ID
+
+// Base topic structure:
+// vortex_device/wifi_valve/<DEVICE_ID>
 #define BASE_TOPIC "vortex_device/wifi_valve/" DEVICE_ID
 
+// Maximum allowed MQTT payload size
 #define MAX_MQTT_PAYLOAD 4096
 
 static const char *TAG = "MQTT_CLIENT";
@@ -18,6 +28,9 @@ static esp_mqtt_client_handle_t mqtt_client;
 static bool mqtt_connected = false;
 static TaskHandle_t mqtt_pub_task_handle = NULL;
 
+/*---------------------------------------------------------------
+ * TLS Certificate (Embedded in binary)
+ *--------------------------------------------------------------*/
 extern const uint8_t _binary_ca_cert_pem_start[];
 extern const uint8_t _binary_ca_cert_pem_end[];
 
@@ -25,7 +38,13 @@ extern const uint8_t _binary_ca_cert_pem_end[];
 // mosquitto_pub -h 82.29.161.52 -p 1883   -t test/topic   -m '{"device":"pc","value":1234567890}'
 
 
-// Publish MQTT Message
+
+/**
+ * @brief Publish a JSON message to a given sub-topic
+ *
+ * @param sub_topic  Sub-topic (e.g., "status", "state_data")
+ * @param message    cJSON object to publish
+ */
 static void mqtt_publish_message(const char *sub_topic, cJSON *message)
 {
     if (mqtt_client == NULL) {
@@ -49,7 +68,8 @@ static void mqtt_publish_message(const char *sub_topic, cJSON *message)
         return;
     }
 
-    // topic setup
+    // Construct full topic:
+    // vortex_device/wifi_valve/<DEVICE_ID>/<sub_topic>
     char full_topic[128];
     snprintf(full_topic, sizeof(full_topic), "%s/%s", BASE_TOPIC, sub_topic);
 
@@ -65,8 +85,20 @@ static void mqtt_publish_message(const char *sub_topic, cJSON *message)
     free(json_str);
 }
 
-// Publish Valve Data
-void mqtt_publish_valve_data( void) {
+
+/*===============================================================
+ *                PUBLISH VALVE DATA (MAIN DATA SET)
+ *==============================================================*/
+
+/**
+ * @brief Publish all valve-related data:
+ *        - state_data
+ *        - status
+ *        - error
+ */
+void mqtt_publish_valve_data( void) 
+{
+    // Create and publish state data
     cJSON *valve_state_data = create_valve_state_data();
     if (valve_state_data == NULL) {
         ESP_LOGE(TAG, "Failed to create valve state data");
@@ -75,6 +107,7 @@ void mqtt_publish_valve_data( void) {
         ESP_LOGI(TAG, "Valve state data published");
     }
     
+    // Create and publish status data
     cJSON *valve_status = create_valve_status();
     if (valve_status == NULL) {
         ESP_LOGE(TAG, "Failed to create valve status");
@@ -83,6 +116,7 @@ void mqtt_publish_valve_data( void) {
         ESP_LOGI(TAG, "Valve status published");
     }
 
+    // Create and publish error data
     cJSON *valve_error = create_valve_error();
     if (valve_error == NULL) {
         ESP_LOGE(TAG, "Failed to create valve error");
@@ -96,7 +130,16 @@ void mqtt_publish_valve_data( void) {
     cJSON_Delete(valve_error);
 }
 
-// Task to publish valve data periodically
+
+
+/*===============================================================
+ *            PERIODIC PUBLISH TASK (FreeRTOS)
+ *==============================================================*/
+
+/**
+ * @brief FreeRTOS task that publishes valve data
+ *        every 5 seconds.
+ */
 void mqtt_publish_valve_data_task(void *pvParameters) {
     while (1) {
         // Publish valve data
@@ -109,7 +152,19 @@ void mqtt_publish_valve_data_task(void *pvParameters) {
 
 
 
-// MQTT Event Handler Callback
+
+/*===============================================================
+ *                  MQTT EVENT HANDLER
+ *==============================================================*/
+
+/**
+ * @brief Handles all MQTT events:
+ *        - CONNECTED
+ *        - DISCONNECTED
+ *        - SUBSCRIBED
+ *        - DATA
+ *        - ERROR
+ */
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     char topic[128];
@@ -224,7 +279,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 }
 
 
-// Start MQTT Client
+
+
+/*===============================================================
+ *                  START MQTT CLIENT
+ *==============================================================*/
+
+/**
+ * @brief Initialize and start MQTT client
+ */
 void start_mqtt_client(void)
 {
     if (mqtt_client != NULL) {
@@ -271,7 +334,14 @@ void start_mqtt_client(void)
 }
 
 
-// Stop MQTT Client
+
+/*===============================================================
+ *                  STOP MQTT CLIENT
+ *==============================================================*/
+
+/**
+ * @brief Stop MQTT client and delete publish task
+ */
 void stop_mqtt_client(void)
 {
     if (mqtt_client != NULL) {

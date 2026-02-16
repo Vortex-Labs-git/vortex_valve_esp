@@ -8,13 +8,34 @@
 #include "global_var.h"
 #include "mqtt_state_fn.h"
 
+
+/*---------------------------------------------------------------
+ * Configuration
+ *--------------------------------------------------------------*/
+
+// Device ID configured from menuconfig
 #define DEVICE_ID CONFIG_WIFI_VALVE_ID
 
 static const char *TAG = "MQTT_STATE";
 
 
 
-// Handle incoming cmd_data MQTT message
+
+/*===============================================================
+ *              HANDLE BASIC COMMAND DATA (cmd_data)
+ *==============================================================*/
+
+/**
+ * @brief Handle incoming MQTT message from topic: cmd_data
+ * 
+ * Expected structure:
+ * {
+ *   "event": "...",
+ *   "device_id": "...",
+ *   "set_controller": {...},
+ *   "valve_data": {...}
+ * }
+ */
 void mqtt_handle_cmd_data(const char *data) {
     cJSON *json_cmd_data = cJSON_Parse(data);
     SetData localCopy;
@@ -24,10 +45,12 @@ void mqtt_handle_cmd_data(const char *data) {
         return;
     }
 
+    // Extract top-level fields
     cJSON *event = cJSON_GetObjectItem(json_cmd_data, "event");
     cJSON *device_id = cJSON_GetObjectItem(json_cmd_data, "device_id");
     cJSON *ota_update = cJSON_GetObjectItem(json_cmd_data, "ota_update");
 
+    /*----------------- Controller Settings -----------------*/
     cJSON *set_controller = cJSON_GetObjectItem(json_cmd_data, "set_controller");
     if (cJSON_IsObject(set_controller)) {
         cJSON *schedule = cJSON_GetObjectItem(set_controller, "schedule");
@@ -39,6 +62,7 @@ void mqtt_handle_cmd_data(const char *data) {
         }
     }
 
+    /*----------------- Valve Angle Data -----------------*/
     cJSON *valve_data = cJSON_GetObjectItem(json_cmd_data, "valve_data");
     if (cJSON_IsObject(valve_data)) {
         cJSON *name = cJSON_GetObjectItem(valve_data, "name");
@@ -52,6 +76,8 @@ void mqtt_handle_cmd_data(const char *data) {
 
     }
 
+    /*----------------- Update Shared Data Safely -----------------*/
+    // Protect shared serverData using mutex
     xSemaphoreTake(serverMutex, portMAX_DELAY);
     serverData = localCopy;
     xSemaphoreGive(serverMutex);
@@ -60,7 +86,20 @@ void mqtt_handle_cmd_data(const char *data) {
 }
 
 
-// Handle incoming control_data MQTT message
+
+
+/*===============================================================
+ *              HANDLE ADVANCED CONTROL DATA (control_data)
+ *==============================================================*/
+
+/**
+ * @brief Handle incoming MQTT message from topic: control_data
+ *
+ * Used for:
+ *  - Controller enable/disable
+ *  - Schedule configuration
+ *  - Sensor threshold configuration
+ */
 void mqtt_handle_control_data(const char *data) {
     cJSON *json_control_data = cJSON_Parse(data);
     SetControl localCopy;
@@ -73,6 +112,7 @@ void mqtt_handle_control_data(const char *data) {
     cJSON *event = cJSON_GetObjectItem(json_control_data, "event");
     cJSON *device_id = cJSON_GetObjectItem(json_control_data, "device_id");
     
+    /*----------------- Controller Enable Settings -----------------*/
     cJSON *set_controllerdata = cJSON_GetObjectItem(json_control_data, "set_controllerdata");
     if (cJSON_IsObject(set_controllerdata)) {
         
@@ -85,6 +125,7 @@ void mqtt_handle_control_data(const char *data) {
         }
     }
 
+    /*----------------- Schedule Configuration -----------------*/
     cJSON *set_scheduledata = cJSON_GetObjectItem(json_control_data, "set_scheduledata");
     if (cJSON_IsObject(set_scheduledata)) {
         
@@ -114,6 +155,7 @@ void mqtt_handle_control_data(const char *data) {
         }
     }
 
+    /*----------------- Sensor Limits -----------------*/
     cJSON *set_sensordata = cJSON_GetObjectItem(json_control_data, "set_sensordata");
     if (cJSON_IsObject(set_sensordata)) {
 
@@ -125,6 +167,7 @@ void mqtt_handle_control_data(const char *data) {
         }
     }
 
+    /*----------------- Update Shared Control Data -----------------*/
     xSemaphoreTake(serverMutex, portMAX_DELAY);
     serverControl = localCopy;
     xSemaphoreGive(serverMutex);
@@ -133,6 +176,14 @@ void mqtt_handle_control_data(const char *data) {
     
 }
 
+
+/*===============================================================
+ *                 GENERIC TOPIC ROUTER
+ *==============================================================*/
+
+/**
+ * @brief Routes MQTT messages based on "event" field
+ */
 void mqtt_handle_topic(const char *data) {
     cJSON *json_data = cJSON_Parse(data);
 
@@ -162,7 +213,14 @@ void mqtt_handle_topic(const char *data) {
 }
 
 
-// Create JSON object for valve status
+
+/*===============================================================
+ *              CREATE JSON: VALVE STATUS
+ *==============================================================*/
+
+/**
+ * @brief Create JSON object for valve online status
+ */
 cJSON* create_valve_status() {
     cJSON *json = cJSON_CreateObject();
 
@@ -177,7 +235,18 @@ cJSON* create_valve_status() {
     return json;
 }
 
-// Create JSON object for valve state data
+
+
+/*===============================================================
+ *              CREATE JSON: VALVE STATE DATA
+ *==============================================================*/
+
+/**
+ * @brief Create JSON object containing:
+ *        - controller state
+ *        - valve state
+ *        - limit switch data
+ */
 cJSON* create_valve_state_data() {
 
     // Lock data
@@ -216,7 +285,15 @@ cJSON* create_valve_state_data() {
     return json;
 }
 
-// Create JSON object for valve error
+
+
+/*===============================================================
+ *              CREATE JSON: VALVE ERROR
+ *==============================================================*/
+
+/**
+ * @brief Create JSON object for error reporting
+ */
 cJSON* create_valve_error() {
     cJSON *json = cJSON_CreateObject();
 
