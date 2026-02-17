@@ -1,3 +1,14 @@
+/**
+ * @file time_func.c
+ * @brief SNTP Time Synchronization and Timestamp Utilities
+ *
+ * This module:
+ *  - Synchronizes system time using SNTP (NTP servers)
+ *  - Configures timezone
+ *  - Waits until valid time is obtained
+ *  - Provides helper function to get ISO 8601 timestamps
+ */
+
 #include <stdio.h>
 #include <time.h>
 #include "esp_sntp.h"
@@ -10,7 +21,27 @@ static const char *TAG_TIME = "TimeSync";
 
 
 
-// Callback function when SNTP sync is complete. if time isnt synced try in loop
+/* ======================================================================== */
+/* ========================== TIME SYNCHRONIZATION ======================== */
+/* ======================================================================== */
+
+/**
+ * @brief Synchronize system time using SNTP
+ *
+ * This function:
+ *  1. Configures SNTP in polling mode
+ *  2. Sets multiple NTP servers (for redundancy)
+ *  3. Initializes SNTP service
+ *  4. Sets timezone to Asia/Colombo
+ *  5. Blocks until a valid time is received
+ *
+ * The function waits in a loop until the year becomes >= 2020,
+ * which ensures that the system time has been properly updated
+ * from the NTP server (instead of default epoch time).
+ *
+ * @note This function blocks until time is synchronized.
+ *       Should be called after WiFi connection is established.
+ */
 void obtain_time(void)
 {
     // Set the SNTP operating mode to polling
@@ -46,7 +77,26 @@ void obtain_time(void)
 
 
 
-// Function to get the current timestamp in ISO format
+
+
+/* ======================================================================== */
+/* ========================== TIMESTAMP UTILITY =========================== */
+/* ======================================================================== */
+
+/**
+ * @brief Get current local timestamp in ISO 8601 format
+ *
+ * Format:
+ *     YYYY-MM-DDTHH:MM:SSZ
+ *
+ * Example:
+ *     2026-02-18T14:25:30Z
+ *
+ * @param[out] timestamp        Pointer to buffer to store formatted string
+ * @param[in]  timestamp_size   Size of the buffer
+ *
+ * @note Ensure buffer size is at least 25 bytes to safely hold ISO string.
+ */
 void get_current_timestamp(char *timestamp, size_t timestamp_size) {
     time_t rawtime;
     struct tm *timeinfo;
