@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief Smart WiFi Manager (AP + STA) with automatic mode switching
+ * @brief Smart WiFi Valve
  *
  * This module initializes WiFi in AP+STA mode and dynamically switches
  * behavior depending on:
