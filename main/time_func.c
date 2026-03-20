@@ -42,37 +42,76 @@ static const char *TAG_TIME = "TimeSync";
  * @note This function blocks until time is synchronized.
  *       Should be called after WiFi connection is established.
  */
-void obtain_time(void)
-{
-    // Set the SNTP operating mode to polling
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+// void obtain_time(void)
+// {
+//     // Set the SNTP operating mode to polling
+//     sntp_setoperatingmode(SNTP_OPMODE_POLL);
     
-    // Set SNTP server
+//     // Set SNTP server
+//     sntp_setservername(0, "pool.ntp.org");
+//     sntp_setservername(1, "time.nist.gov");
+//     sntp_setservername(2, "time.google.com");
+
+//     // Initialize the SNTP service
+//     sntp_init();
+
+//     setenv("TZ", "Asia/Colombo", 1);
+//     tzset();
+
+//     // get the correct time
+//     time_t now = 0;
+//     struct tm timeinfo = { 0 };
+//     while (timeinfo.tm_year < (2020 - 1900)) {
+//         ESP_LOGI(TAG_TIME, "Waiting for time to sync...");
+//         vTaskDelay(pdMS_TO_TICKS(2000));
+//         time(&now); // Get the current time
+//         localtime_r(&now, &timeinfo);
+//     }
+
+//     ESP_LOGI(TAG_TIME, "Time synchronized successfully");
+    
+//     ESP_LOGI(TAG_TIME, "Current time: %04d-%02d-%02d %02d:%02d:%02d",
+//              timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
+//              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+// }
+
+void obtain_time(void *pvParameters)
+{
+    (void) pvParameters;
+
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
     sntp_setservername(0, "pool.ntp.org");
     sntp_setservername(1, "time.nist.gov");
     sntp_setservername(2, "time.google.com");
-
-    // Initialize the SNTP service
     sntp_init();
 
-    setenv("TZ", "Asia/Colombo", 1);
+    setenv("TZ", "IST-5:30", 1);
     tzset();
 
-    // get the correct time
     time_t now = 0;
-    struct tm timeinfo = { 0 };
-    while (timeinfo.tm_year < (2020 - 1900)) {
+    struct tm timeinfo = {0};
+    int retry_count = 0;
+    const int max_retries = 30; // ~1 minute timeout
+
+    while (timeinfo.tm_year < (2020 - 1900) && retry_count < max_retries) {
         ESP_LOGI(TAG_TIME, "Waiting for time to sync...");
         vTaskDelay(pdMS_TO_TICKS(2000));
-        time(&now); // Get the current time
+        time(&now);
         localtime_r(&now, &timeinfo);
+        retry_count++;
     }
 
-    ESP_LOGI(TAG_TIME, "Time synchronized successfully");
-    
+    if (timeinfo.tm_year >= (2020 - 1900)) {
+        ESP_LOGI(TAG_TIME, "Time synchronized successfully");
+    } else {
+        ESP_LOGW(TAG_TIME, "Time sync failed, using default system time");
+    }
+
     ESP_LOGI(TAG_TIME, "Current time: %04d-%02d-%02d %02d:%02d:%02d",
              timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday,
              timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+
+    vTaskDelete(NULL); // Delete task after finishing
 }
 
 
