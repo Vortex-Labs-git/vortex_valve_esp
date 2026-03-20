@@ -2,7 +2,7 @@ idf_component_register(SRCS
                             "softap_sta.c"
                             "global_var.c"
                             "eeprom_fn/wifi_storage.c"
-                            "eeprom_fn/shedule_storage.c"
+                            "eeprom_fn/schedule_storage.c"
                             "websocket_fn/websocket_server_fn.c"
                             "websocket_fn/websocket_state_fn.c"
                             "time_func.c"
@@ -13,6 +13,7 @@ idf_component_register(SRCS
                             "valve_fn/limit_switch.c"
                             "valve_fn/valve_process.c"
                             "main_process.c"
+                            "test_process.c"
                         INCLUDE_DIRS 
                             "."
                         EMBED_TXTFILES

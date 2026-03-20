@@ -200,6 +200,7 @@ void offline_data(cJSON *event, cJSON *json) {
             xSemaphoreTake(serverMutex, portMAX_DELAY);
             serverData = localCopy;
             xSemaphoreGive(serverMutex);
+            ESP_LOGI(TAG, "ESP global variable updated with new valve control data");
 
         } else {
             ESP_LOGW(TAG, "\"valve_data\" field is missing or not an object");

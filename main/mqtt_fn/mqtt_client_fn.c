@@ -73,7 +73,7 @@ static void mqtt_publish_message(const char *sub_topic, cJSON *message)
     char full_topic[128];
     snprintf(full_topic, sizeof(full_topic), "%s/%s", BASE_TOPIC, sub_topic);
 
-    ESP_LOGI(TAG, "Publishing to %s", full_topic);
+    // ESP_LOGI(TAG, "Publishing to %s", full_topic);
     ESP_LOGI(TAG, "Payload: %s", json_str);
 
     int msg_id = esp_mqtt_client_publish( mqtt_client, full_topic, json_str, 0, 0, 0 );
@@ -104,7 +104,7 @@ void mqtt_publish_valve_data( void)
         ESP_LOGE(TAG, "Failed to create valve state data");
     } else {
         mqtt_publish_message("state_data", valve_state_data);
-        ESP_LOGI(TAG, "Valve state data published");
+        // ESP_LOGI(TAG, "Valve state data published");
     }
     
     // Create and publish status data
@@ -113,7 +113,7 @@ void mqtt_publish_valve_data( void)
         ESP_LOGE(TAG, "Failed to create valve status");
     } else {
         mqtt_publish_message("status", valve_status);
-        ESP_LOGI(TAG, "Valve status published");
+        // ESP_LOGI(TAG, "Valve status published");
     }
 
     // Create and publish error data
@@ -122,7 +122,7 @@ void mqtt_publish_valve_data( void)
         ESP_LOGE(TAG, "Failed to create valve error");
     } else {
         mqtt_publish_message("error", valve_error);
-        ESP_LOGI(TAG, "Valve error published");
+        // ESP_LOGI(TAG, "Valve error published");
     }
 
     cJSON_Delete(valve_state_data);
@@ -292,10 +292,12 @@ void start_mqtt_client(void)
 {
     if (mqtt_client != NULL) {
         ESP_LOGE(TAG, "MQTT client already initialized. Reconnecting...");
-        esp_mqtt_client_reconnect(mqtt_client);
+        // esp_mqtt_client_reconnect(mqtt_client);
         return;
     }
 
+    ESP_LOGI(TAG, "Starting MQTT client...");
+    
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = MQTT_BROKER_URI,
         .credentials.client_id = DEVICE_ID,
@@ -347,6 +349,9 @@ void stop_mqtt_client(void)
     if (mqtt_client != NULL) {
         ESP_LOGI(TAG, "Stopping MQTT Client...");
         esp_mqtt_client_stop(mqtt_client);
+        esp_mqtt_client_destroy(mqtt_client); 
+
+        mqtt_client = NULL;  
     }
 
     // Delete the valve data publishing task

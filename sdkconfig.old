@@ -484,7 +484,7 @@ CONFIG_OPEN_LIMIT_PIN_B=5
 #
 # LED Indicators Configuration
 #
-CONFIG_RED_LED_PIN=17
+CONFIG_RED_LED_PIN=4
 CONFIG_GREEN_LED_PIN=16
 # end of LED Indicators Configuration
 

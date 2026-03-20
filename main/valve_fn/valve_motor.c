@@ -6,6 +6,8 @@
 
 
 
+
+
 void motor_init(Motor *motor) {
     gpio_set_direction(motor->motorIN1_PIN, GPIO_MODE_OUTPUT);
     gpio_set_direction(motor->motorIN2_PIN, GPIO_MODE_OUTPUT);

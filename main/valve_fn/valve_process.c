@@ -49,7 +49,7 @@ void init_valve_system(void) {
     led_on(&redLED);
     led_on(&greenLED);
 
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(1000));
 
     led_off(&redLED);
     led_off(&greenLED);
@@ -131,6 +131,7 @@ int motor_open(void) {
                 motor_stop(&motor);
                 errorCode = 331;
                 turn_state = false;
+                ESP_LOGE(TAG, "motor open error timeout");
             }
 
             motor_run_aclck(&motor, 200);
@@ -188,6 +189,7 @@ int motor_close(void) {
                 motor_stop(&motor);
                 errorCode = 231;
                 turn_state = false;
+                ESP_LOGE(TAG, "motor close error timeout");
             }
 
             motor_run_clk(&motor, 200);
