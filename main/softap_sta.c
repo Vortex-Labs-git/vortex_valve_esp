@@ -39,11 +39,15 @@
 
 #include "global_var.h"
 #include "eeprom_fn/wifi_storage.h"
+#include "eeprom_fn/schedule_storage.h"
 #include "time_func.h"
 #include "websocket_fn/websocket_server_fn.h"
 #include "mqtt_fn/mqtt_client_fn.h"
 #include "valve_fn/valve_process.h"
 #include "main_process.h"
+#include "test_process.h"
+
+
 
 
 /* ========================== CONFIGURATION MACROS ========================== */
@@ -78,6 +82,10 @@ static const char *TAG_AP = "WiFi SoftAP";
 static const char *TAG_STA = "WiFi Sta";
 
 static int s_ap_client_count = 0;
+
+static bool router_connected = false;
+static bool mqtt_running = false;
+static bool web_running = false;
 
 
 /* ======================================================================== */
@@ -115,7 +123,6 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         esp_wifi_connect();
 
         led_blink(&greenLED, 500);
-        led_blink(&redLED, 500);
     }
 
     /**
@@ -123,12 +130,14 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
      * Triggered when router connection fails or is lost.
      */
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        router_connected = false;
         ESP_LOGI(TAG_STA, "Router Disconnected/Not Found.");
 
-        stop_mqtt_client();
-
-        led_off(&greenLED);
-        led_off(&redLED);
+        /* Stop MQTT */
+        if (mqtt_running) {
+            stop_mqtt_client();
+            mqtt_running = false;
+        }
 
         /**
          * If we were only in STA mode,
@@ -141,8 +150,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
             ESP_LOGI(TAG_STA, "Switching to AP+STA mode (Turning AP ON)...");
             esp_wifi_set_mode(WIFI_MODE_APSTA);
 
-            led_blink2(&greenLED, 500, 2000);
-            led_blink2(&redLED, 500, 2000);
+            led_off(&greenLED);
         }
 
         /**
@@ -155,8 +163,8 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
             esp_wifi_connect();
 
             led_blink(&greenLED, 500);
-            led_blink(&redLED, 500);
         } else {
+            led_off(&greenLED);
             ESP_LOGI(TAG_STA, "AP is busy. NOT searching for router.");
         }
 
@@ -168,6 +176,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
      */
     else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
+        router_connected = true;
         ESP_LOGI(TAG_STA, "Connected to Router! IP: " IPSTR, IP2STR(&event->ip_info.ip));
 
         /**
@@ -176,10 +185,19 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         ESP_LOGI(TAG_STA, "Router connected. Switching to STA Mode (Turning AP OFF)...");
         esp_wifi_set_mode(WIFI_MODE_STA);
 
-        start_mqtt_client();
+        /* Stop Webserver if running */
+        if (web_running) {
+            stop_webserver();
+            web_running = false;
+        }
 
-        led_blink2(&greenLED, 500, 2000);
-        led_off(&redLED);
+        /* Start MQTT */
+        if (!mqtt_running) {
+            start_mqtt_client();
+            mqtt_running = true;
+        }
+
+        led_blink2(&greenLED, 500, 5000);
     }
 
     
@@ -192,10 +210,20 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
         ESP_LOGI(TAG_AP, "Client joined AP: "MACSTR, MAC2STR(event->mac));
-        start_webserver();
+        
+        /* Stop MQTT if running */
+        if (mqtt_running) {
+            stop_mqtt_client();
+            mqtt_running = false;
+        }
 
-        led_blink(&greenLED, 500);
-        led_off(&redLED);
+        /* Start Webserver */
+        if (!web_running) {
+            start_webserver();
+            web_running = true;
+        }
+
+        led_blink2(&greenLED, 500, 2000);
 
         s_ap_client_count++;
 
@@ -213,10 +241,8 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
     else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED) {
         wifi_event_ap_stadisconnected_t* event = (wifi_event_ap_stadisconnected_t*) event_data;
         ESP_LOGI(TAG_AP, "Client left AP: "MACSTR, MAC2STR(event->mac));
-        stop_webserver();
 
-        led_off(&greenLED);
-        led_off(&redLED);
+        led_blink2(&greenLED, 500, 2000);
 
         if (s_ap_client_count > 0) s_ap_client_count--;
 
@@ -226,10 +252,20 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
          */
         if (s_ap_client_count == 0) {
             ESP_LOGI(TAG_AP, "No clients on AP. Resuming Router search...");
+            
+            /* Stop Webserver */
+            if (web_running) {
+                stop_webserver();
+                web_running = false;
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(100));
+            esp_wifi_set_mode(WIFI_MODE_APSTA);
+            
+            vTaskDelay(pdMS_TO_TICKS(500));
             esp_wifi_connect();
 
             led_blink(&greenLED, 500);
-            led_blink(&redLED, 500);
         }
     }
 
@@ -408,7 +444,6 @@ void app_main(void)
     wifi_storage_restore_default();
 #endif
 
-
     wifi_storage_load();
 
     valveMutex = xSemaphoreCreateMutex();
@@ -423,12 +458,21 @@ void app_main(void)
         return;
     }
 
+    load_eeprom_schedule();
+
+
+    // start_limit_test();
+    // start_motor_test();
+    // start_valve_toggle_test();
+
     init_valve_system();
 
     wifi_init_smart_mode();
 
-    obtain_time();
+    xTaskCreate(obtain_time, "obtain_time", 4096, NULL, 5, NULL);
 
-    // xTaskCreate(valve_sync_process, "valve_sync_process", 4096, NULL, 5, NULL);
+    xTaskCreate(schedule_save_task, "schedule_save_task", 4096, NULL, 5, NULL);
+
+    xTaskCreate(valve_sync_process, "valve_sync_process", 4096, NULL, 5, NULL);
 
 }

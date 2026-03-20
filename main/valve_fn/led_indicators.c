@@ -2,12 +2,15 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
+#include "esp_log.h"
 
 #include "led_indicators.h"
 
 
 #define MAX_LED_COUNT        3
 #define LED_TASK_PERIOD_MS  20
+
+static const char *TAG_INDICATOR = "LED_INDICATOR";
 
 
 // Internal structure to manage LED states
@@ -117,6 +120,7 @@ void led_on(LedIndicator *led)
 
     if (internal_led->mode == LED_MODE_ON)
         return;
+    ESP_LOGI(TAG_INDICATOR, "LED ON called on pin %d\n", led->pin);
 
     if (internal_led) internal_led->mode = LED_MODE_ON;
 }
@@ -128,6 +132,8 @@ void led_off(LedIndicator *led)
     if (internal_led->mode == LED_MODE_OFF)
         return;
 
+    ESP_LOGI(TAG_INDICATOR, "LED OFF called on pin %d\n", led->pin);
+
     if (internal_led) internal_led->mode = LED_MODE_OFF;
 }
 
@@ -137,6 +143,8 @@ void led_blink(LedIndicator *led, uint32_t period_ms)
 
     if (internal_led->mode == LED_MODE_BLINK && internal_led->on_ms == period_ms)
         return;
+
+    ESP_LOGI(TAG_INDICATOR, "LED BLINK called on pin %d with period %ld\n", led->pin, period_ms);
 
     if (internal_led) {
         internal_led->mode = LED_MODE_BLINK;
@@ -151,6 +159,8 @@ void led_blink2(LedIndicator *led, uint32_t on_ms, uint32_t off_ms)
 
     if (internal_led->mode == LED_MODE_BLINK2 && internal_led->on_ms == on_ms && internal_led->off_ms == off_ms)
         return;
+
+    ESP_LOGI(TAG_INDICATOR, "LED BLINK2 called on pin %d with on_ms %ld and off_ms %ld\n", led->pin, on_ms, off_ms);
 
     if (internal_led) {
         internal_led->mode = LED_MODE_BLINK2;
