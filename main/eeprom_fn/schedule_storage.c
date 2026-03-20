@@ -13,8 +13,9 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
+#include "global_var.h"
 
-#include "shedule_storage.h"   // (Typo in filename retained as-is)
+#include "schedule_storage.h"   // (Typo in filename retained as-is)
 
 /* ======================================================================== */
 /* ========================== NVS CONFIGURATION =========================== */
@@ -133,44 +134,30 @@ esp_err_t schedule_storage_load(ScheduleInfo *scheList,
     esp_err_t err;
     size_t size = 0;
 
-    /**
-     * Open NVS namespace in read-only mode
-     */
     err = nvs_open(SHEDULE_NVS_NAMESPACE, NVS_READONLY, &handle);
     if (err != ESP_OK) {
         ESP_LOGW(TAG_SCHEDULE, "No stored Schedule config");
         return err;
     }
 
-    /**
-     * First call to determine required blob size
-     *
-     * NOTE:
-     * Passing scheList here is unnecessary for size query.
-     * Typically NULL should be used.
-     */
-    err = nvs_get_blob(handle, SHEDULE_NVS_KEY, scheList, &size);
+    // ✅ Step 1: Get required size correctly
+    err = nvs_get_blob(handle, SHEDULE_NVS_KEY, NULL, &size);
     if (err != ESP_OK) {
         nvs_close(handle);
         return err;
     }
 
-    /**
-     * Calculate number of ScheduleInfo entries stored
-     */
     size_t count = size / sizeof(ScheduleInfo);
 
-    /**
-     * Validate buffer capacity
-     */
     if (count > maxListSize) {
         nvs_close(handle);
         return ESP_ERR_NO_MEM;
     }
 
-    /**
-     * Read actual schedule data
-     */
+    // ✅ Step 2: Clear buffer before loading
+    memset(scheList, 0, maxListSize * sizeof(ScheduleInfo));
+
+    // ✅ Step 3: Load actual data
     err = nvs_get_blob(handle, SHEDULE_NVS_KEY, scheList, &size);
 
     if (err == ESP_OK && listSize) {
@@ -178,10 +165,25 @@ esp_err_t schedule_storage_load(ScheduleInfo *scheList,
     }
 
     nvs_close(handle);
-
     return err;
 }
 
+
+void load_eeprom_schedule(){
+
+    memset(loaded_schedule, 0, sizeof(loaded_schedule));
+    
+    if (schedule_storage_load(loaded_schedule, 10, &loaded_count) == ESP_OK) {
+        xSemaphoreTake(serverMutex, portMAX_DELAY);
+        for (int i = 0; i < loaded_count; i++) {
+            serverControl.schedule_info[i] = loaded_schedule[i];
+        }
+        xSemaphoreGive(serverMutex);
+        ESP_LOGI(TAG_SCHEDULE, "Loaded %d schedule entries from NVS", loaded_count);
+    } else {
+        ESP_LOGI(TAG_SCHEDULE, "No schedule stored in NVS, waiting for MQTT update");
+    }
+}
 
 /* ======================================================================== */
 /* ============================== EXAMPLE ================================= */

@@ -129,6 +129,8 @@ void mqtt_handle_control_data(const char *data) {
     cJSON *set_scheduledata = cJSON_GetObjectItem(json_control_data, "set_scheduledata");
     if (cJSON_IsObject(set_scheduledata)) {
         
+        memset(localCopy.schedule_info, 0, sizeof(localCopy.schedule_info));
+        
         cJSON *set_schedule = cJSON_GetObjectItem(set_scheduledata, "set_schedule");
         if (cJSON_IsBool(set_schedule)) {
             localCopy.set_schedule = cJSON_IsTrue(set_schedule);
@@ -146,9 +148,9 @@ void mqtt_handle_control_data(const char *data) {
                     cJSON *open = cJSON_GetObjectItem(schedule_item, "open");
                     cJSON *close = cJSON_GetObjectItem(schedule_item, "close");
                     if (cJSON_IsString(day) && cJSON_IsString(open) && cJSON_IsString(close)) {
-                        strncpy(localCopy.schedule_info[i].day, day->valuestring, sizeof(localCopy.schedule_info[i].day) - 1);
-                        strncpy(localCopy.schedule_info[i].open, open->valuestring, sizeof(localCopy.schedule_info[i].open) - 1);
-                        strncpy(localCopy.schedule_info[i].close, close->valuestring, sizeof(localCopy.schedule_info[i].close) - 1);
+                        snprintf(localCopy.schedule_info[i].day, sizeof(localCopy.schedule_info[i].day), "%s", day->valuestring);
+                        snprintf(localCopy.schedule_info[i].open, sizeof(localCopy.schedule_info[i].open), "%s", open->valuestring);
+                        snprintf(localCopy.schedule_info[i].close, sizeof(localCopy.schedule_info[i].close), "%s", close->valuestring);
                     }
                 }
             }

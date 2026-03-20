@@ -106,3 +106,10 @@ GetData valveData = {
     .close_limit_click      = false,
     .error_msg         = ""
 };
+
+
+
+
+
+ScheduleInfo loaded_schedule[10];
+size_t loaded_count = 0;

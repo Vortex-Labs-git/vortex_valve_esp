@@ -18,10 +18,13 @@ typedef struct {
 
 
 // Define the structure for set_control
+#define DAY_SIZE   16   // Enough for "Wednesday" + null
+#define TIME_SIZE   8   // Enough for "HH:MM" + optional seconds + null
+
 typedef struct {
-    char day[10];
-    char open[6];
-    char close[6];
+    char day[DAY_SIZE];
+    char open[TIME_SIZE];
+    char close[TIME_SIZE];
 } ScheduleInfo;
 typedef struct {
     bool schedule_control;
@@ -60,6 +63,7 @@ extern SetData serverData;
 extern SetControl serverControl;
 extern GetWifi wifiStaData;
 extern GetData valveData;
-
+extern ScheduleInfo loaded_schedule[10];
+extern size_t loaded_count;
 
 #endif // GLOBAL_VAR_H
