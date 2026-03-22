@@ -24,12 +24,12 @@
 /**
  * @brief NVS namespace used for schedule configuration
  */
-#define SHEDULE_NVS_NAMESPACE    "shedule_cfg"
+#define SCHEDULE_NVS_NAMESPACE    "schedule_cfg"
 
 /**
  * @brief Key used to store schedule blob inside namespace
  */
-#define SHEDULE_NVS_KEY          "shedule"
+#define SCHEDULE_NVS_KEY          "schedule"
 
 /**
  * @brief Logging tag
@@ -68,7 +68,7 @@ esp_err_t schedule_storage_save(ScheduleInfo *scheList, size_t listSize)
     /**
      * Open NVS namespace in read-write mode
      */
-    err = nvs_open(SHEDULE_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    err = nvs_open(SCHEDULE_NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err != ESP_OK) {
         return err;
     }
@@ -77,7 +77,7 @@ esp_err_t schedule_storage_save(ScheduleInfo *scheList, size_t listSize)
      * Store schedule array as binary blob
      */
     err = nvs_set_blob(handle,
-                       SHEDULE_NVS_KEY,
+                       SCHEDULE_NVS_KEY,
                        scheList,
                        listSize * sizeof(ScheduleInfo));
 
@@ -134,14 +134,14 @@ esp_err_t schedule_storage_load(ScheduleInfo *scheList,
     esp_err_t err;
     size_t size = 0;
 
-    err = nvs_open(SHEDULE_NVS_NAMESPACE, NVS_READONLY, &handle);
+    err = nvs_open(SCHEDULE_NVS_NAMESPACE, NVS_READONLY, &handle);
     if (err != ESP_OK) {
         ESP_LOGW(TAG_SCHEDULE, "No stored Schedule config");
         return err;
     }
 
-    // ✅ Step 1: Get required size correctly
-    err = nvs_get_blob(handle, SHEDULE_NVS_KEY, NULL, &size);
+    // Step 1: Get required size correctly
+    err = nvs_get_blob(handle, SCHEDULE_NVS_KEY, NULL, &size);
     if (err != ESP_OK) {
         nvs_close(handle);
         return err;
@@ -154,11 +154,11 @@ esp_err_t schedule_storage_load(ScheduleInfo *scheList,
         return ESP_ERR_NO_MEM;
     }
 
-    // ✅ Step 2: Clear buffer before loading
+    // Step 2: Clear buffer before loading
     memset(scheList, 0, maxListSize * sizeof(ScheduleInfo));
 
-    // ✅ Step 3: Load actual data
-    err = nvs_get_blob(handle, SHEDULE_NVS_KEY, scheList, &size);
+    // Step 3: Load actual data
+    err = nvs_get_blob(handle, SCHEDULE_NVS_KEY, scheList, &size);
 
     if (err == ESP_OK && listSize) {
         *listSize = count;
@@ -169,12 +169,54 @@ esp_err_t schedule_storage_load(ScheduleInfo *scheList,
 }
 
 
+/* ======================================================================== */
+/* ======================= LOAD EEPROM SCHEDULE =========================== */
+/* ======================================================================== */
+
+/**
+ * @brief Load schedule from NVS into runtime system
+ *
+ * This function acts as a bridge between persistent storage (NVS)
+ * and the application's runtime data structure.
+ *
+ * Flow:
+ *   1. Clear temporary schedule buffer
+ *   2. Load schedule data from NVS into buffer
+ *   3. If successful:
+ *        a. Acquire mutex for thread-safe access
+ *        b. Copy loaded data into global serverControl structure
+ *        c. Release mutex
+ *   4. Log result (success or fallback condition)
+ *
+ * Notes:
+ *   - Uses a temporary buffer (loaded_schedule) to avoid partial updates
+ *   - Protects shared data using serverMutex (FreeRTOS synchronization)
+ *   - If no data exists in NVS, system waits for external update (e.g., MQTT)
+ *
+ * Globals Used:
+ *   - loaded_schedule   : Temporary buffer for NVS data
+ *   - loaded_count      : Number of loaded schedule entries
+ *   - serverControl     : Global runtime schedule storage
+ *   - serverMutex       : Mutex for thread-safe access
+ *
+ * @return None
+ */
 void load_eeprom_schedule(){
 
+    /**
+     * Step 1: Clear temporary buffer
+     */
     memset(loaded_schedule, 0, sizeof(loaded_schedule));
     
+    /**
+     * Step 2: Load schedule data from NVS
+     */
     if (schedule_storage_load(loaded_schedule, 10, &loaded_count) == ESP_OK) {
+        // Acquire mutex before modifying shared data
         xSemaphoreTake(serverMutex, portMAX_DELAY);
+
+        // Copy loaded schedule into global runtime structure
+        
         for (int i = 0; i < loaded_count; i++) {
             serverControl.schedule_info[i] = loaded_schedule[i];
         }
@@ -206,3 +248,6 @@ ScheduleInfo loaded[7];
 size_t loaded_count;
 schedule_storage_load(loaded, 7, &loaded_count);
 */
+
+
+// generate full.md file that able to copy and pase from sigle process. also i this document needs to be very detailed. becasue a new begiined also should understand this process and functinos. and later im plane to traing a custom ai for this for helping perpose
