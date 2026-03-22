@@ -228,17 +228,35 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
                 rx_bytes_received = 0;
                 if (rx_data_len > MAX_MQTT_PAYLOAD) {
                     ESP_LOGE(TAG, "Payload too large");
+
+                    rx_data_len = 0; //
+                    rx_bytes_received = 0; //
+                    rx_data = NULL; //
+
                     break;
                 }
                 rx_data = malloc(rx_data_len + 1);
+                // if (!rx_data) {
+                //     ESP_LOGE(TAG, "Payload memory allocation failed");
+                //     break;
+                // }
                 if (!rx_data) {
                     ESP_LOGE(TAG, "Payload memory allocation failed");
+
+                    rx_data_len = 0;
+                    rx_bytes_received = 0;
+                    rx_data = NULL;
+
                     break;
                 }
             }
 
             
-            if (event->data_len > 0){
+            // if (event->data_len > 0){
+            //     memcpy(rx_data + event->current_data_offset, event->data, event->data_len);
+            //     rx_bytes_received += event->data_len;
+            // }
+            if (rx_data && event->data_len > 0) {
                 memcpy(rx_data + event->current_data_offset, event->data, event->data_len);
                 rx_bytes_received += event->data_len;
             }
