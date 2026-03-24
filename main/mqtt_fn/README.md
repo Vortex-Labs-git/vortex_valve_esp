@@ -3,144 +3,403 @@
 ---
 
 ## Overview
+
 This module implements secure, real-time MQTT communication for the ESP32 Smart Valve Controller. It enables remote monitoring, control, and configuration via a cloud/server using JSON messages over MQTT, with TLS support.
+
+The system supports:
+
+* Periodic device telemetry (state, status, error)
+* Remote valve control
+* Schedule configuration
+* Sensor threshold updates
 
 ---
 
 ## Architecture & Main Components
 
-- **MQTT Client Layer**
-  - Handles initialization, connection, reconnection, and disconnection.
-  - Publishes device state, status, and error messages.
-  - Subscribes to command/control topics for remote actions.
-  - Uses TLS with a CA certificate for secure communication.
+### 1. MQTT Client Layer
 
-- **State & Command Handler Layer**
-  - Parses incoming JSON commands and updates device state.
-  - Handles schedule, control, and WiFi configuration commands.
-  - Uses FreeRTOS mutexes for thread-safe updates.
+Responsible for all MQTT communication.
+
+* Initializes and connects to the MQTT broker
+* Handles automatic reconnection
+* Publishes device data periodically
+* Subscribes to command topics
+* Uses TLS with an embedded CA certificate
+
+---
+
+### 2. State & Command Handler Layer
+
+Responsible for processing incoming messages and updating device behavior.
+
+* Parses JSON payloads using `cJSON`
+* Updates shared data structures (`serverData`, `serverControl`)
+* Uses FreeRTOS mutexes for thread safety:
+
+  * `serverMutex`
+  * `valveMutex`
 
 ---
 
 ## Process Flow
 
 ### 1. Initialization & Connection
-- MQTT client is started when the ESP32 connects to a WiFi router (`start_mqtt_client()` in `softap_sta.c`).
-- Client is stopped when WiFi disconnects (`stop_mqtt_client()`).
-- Broker URI, device ID, and credentials are set via menuconfig.
+
+* MQTT client starts when the device successfully connects to the router (STA gets IP).
+
+  ```c
+  start_mqtt_client()
+  ```
+* MQTT client stops when:
+- Router disconnects
+- A client connects to the device SoftAP (local configuration mode)
+
+  ```c
+  stop_mqtt_client()
+  ```
+
+During initialization:
+
+* Broker URI (`CONFIG_MQTT_BROKER_URI`) is loaded
+* Device ID (`CONFIG_WIFI_VALVE_ID`) is used as MQTT client ID
+* TLS certificate is attached for secure communication
+
+After successful connection:
+
+* Device subscribes to:
+
+  ```
+  vortex_device/wifi_valve/<DEVICE_ID>/cmd_data
+  vortex_device/wifi_valve/<DEVICE_ID>/control_data
+  ```
+
+---
 
 ### 2. Periodic Data Publishing
-- A FreeRTOS task (`mqtt_publish_valve_data_task`) publishes valve state, status, and error data every 5 seconds.
-- Topics follow the pattern:  
-  `vortex_device/wifi_valve/<DEVICE_ID>/<sub_topic>`
+
+* A FreeRTOS task runs continuously:
+
+  ```c
+  mqtt_publish_valve_data_task()
+  ```
+* Executes every **5 seconds**
+* Calls:
+
+  ```c
+  mqtt_publish_valve_data()
+  ```
+
+---
 
 ### 3. Publishing Data
-- `mqtt_publish_valve_data()` publishes:
-  - `state_data`: Full valve state (angle, limits, etc.)
-  - `status`: Online status
-  - `error`: Error messages (if any)
+
+All data is published under:
+
+```
+vortex_device/wifi_valve/<DEVICE_ID>/<sub_topic>
+```
+
+#### Published Topics:
+
+* **state_data**
+
+  * Full valve state (angle, limits, controller state)
+
+* **status**
+
+  * Device online status
+
+* **error**
+
+  * Current error message
+
+#### How it works:
+
+1. JSON is created using helper functions:
+
+   * `create_valve_state_data()`
+   * `create_valve_status()`
+   * `create_valve_error()`
+2. Data is serialized using `cJSON`
+3. Sent using:
+
+   ```c
+   mqtt_publish_message()
+   ```
+
+---
 
 ### 4. Receiving Commands
-- Subscribes to topics like `cmd_data` and `control_data`.
-- Handles commands for:
-  - Manual valve control
-  - Schedule updates
-  - WiFi credential updates
-  - Sensor threshold configuration
 
-### 5. State & Error Reporting
-- Uses helper functions to create structured JSON payloads for all outgoing messages.
+The device listens to:
+
+```
+.../cmd_data
+.../control_data
+```
+
+Incoming MQTT data may arrive in **multiple chunks**, so:
+
+* Payload is reconstructed safely before processing
+* Maximum supported payload size: **4096 bytes**
+
+After full reception:
+
+* Topic is checked
+* Message is routed to appropriate handler
+
+---
+
+### 5. Command Handling
+
+#### 5.1 Basic Command (`cmd_data`)
+
+Handled by:
+
+```c
+mqtt_handle_cmd_data()
+```
+
+Used for:
+
+* Manual valve control
+* Basic controller enable/disable
+
+**Supported JSON fields:**
+
+```json
+{
+  "set_controller": {
+    "schedule": true,
+    "sensor": false
+  },
+  "valve_data": {
+    "set_angle": true,
+    "angle": 90
+  }
+}
+```
+
+**Effect:**
+
+* Updates `serverData` (protected by `serverMutex`)
+
+---
+
+#### 5.2 Advanced Control (`control_data`)
+
+Handled by:
+
+```c
+mqtt_handle_control_data()
+```
+
+Used for:
+
+* Controller configuration
+* Schedule setup
+* Sensor thresholds
+
+---
+
+##### Controller Settings
+
+```json
+"set_controllerdata": {
+  "schedule": true,
+  "sensor": false
+}
+```
+
+---
+
+##### Schedule Configuration
+
+```json
+"set_scheduledata": {
+  "set_schedule": true,
+  "schedule_info": [
+    {
+      "day": "Monday",
+      "open": "08:00",
+      "close": "18:00"
+    }
+  ]
+}
+```
+
+* Supports up to **10 schedule entries**
+* Stored in `serverControl.schedule_info`
+
+---
+
+##### Sensor Limits
+
+```json
+"set_sensordata": {
+  "upper_limit": 80,
+  "lower_limit": 30
+}
+```
+
+---
+
+**Effect:**
+
+* Updates `serverControl` (protected by `serverMutex`)
+
+---
+
+#### 5.3 Generic Topic Handler
+
+Handled by:
+
+```c
+mqtt_handle_topic()
+```
+
+* Reads `"event"` field from JSON
+* Routes message dynamically:
+
+  * `"set_valve_basic"` → `mqtt_handle_cmd_data()`
+  * `"set_valve_control"` → `mqtt_handle_control_data()`
+* Logs unknown events
+
+---
+
+### 6. State & Error Reporting
+
+#### Valve Status
+
+Generated by:
+
+```c
+create_valve_status()
+```
+
+Includes:
+
+* timestamp
+* device_id
+* status = `"online"`
+
+---
+
+#### Valve State Data
+
+Generated by:
+
+```c
+create_valve_state_data()
+```
+
+Includes:
+
+* **Controller State**
+
+  * schedule
+  * sensor
+
+* **Valve Data**
+
+  * angle
+  * is_open
+  * is_close
+
+* **Limit Switch Data**
+
+  * open/close limit status
+
+---
+
+#### Valve Error
+
+Generated by:
+
+```c
+create_valve_error()
+```
+
+Includes:
+
+* error message from `valveData.error_msg`
 
 ---
 
 ## Key Functions
 
-- `start_mqtt_client(void)`: Initializes and starts the MQTT client and periodic publish task.
-- `stop_mqtt_client(void)`: Stops the MQTT client and deletes the publish task.
-- `mqtt_publish_valve_data(void)`: Publishes current valve/device state, status, and error.
-- `mqtt_handle_cmd_data(const char *data)`: Handles incoming command data.
-- `mqtt_handle_control_data(const char *data)`: Handles advanced control and schedule data.
-- `mqtt_handle_topic(const char *data)`: Routes incoming messages based on event type.
-- `create_valve_status()`, `create_valve_state_data()`, `create_valve_error()`: Build JSON objects for publishing.
+* `start_mqtt_client(void)`
+  Initializes MQTT client, registers event handler, subscribes to topics, and starts publish task.
 
----
+* `stop_mqtt_client(void)`
+  Stops MQTT client and deletes publish task.
 
-## MQTT Message Flow & Examples
+* `mqtt_publish_valve_data(void)`
+  Publishes state, status, and error messages.
 
-### 1. Publishing Device Data (every 5 seconds)
+* `mqtt_publish_message(const char *sub_topic, cJSON *message)`
+  Handles topic creation and MQTT publishing.
 
-**Topic:** `vortex_device/wifi_valve/<DEVICE_ID>/state_data`
-```json
-{
-  "event": "valve_data",
-  "timestamp": "YYYY-MM-DD HH:MM:SS",
-  "device_id": "DEVICE_ID",
-  "get_controller": { "schedule": true, "sensor": false },
-  "get_valvedata": { "angle": 90, "is_open": true, "is_close": false },
-  "get_limitdata": { "is_open_limit": true, "open_limit": false, "is_close_limit": true, "close_limit": false },
-  "Error": "No Error"
-}
-```
+* `mqtt_handle_cmd_data(const char *data)`
+  Processes basic command data.
 
-### 2. Receiving Commands
+* `mqtt_handle_control_data(const char *data)`
+  Processes advanced control and schedule data.
 
-**Topic:** `vortex_device/wifi_valve/<DEVICE_ID>/cmd_data`
-```json
-{
-  "event": "set_valve_basic",
-  "device_id": "DEVICE_ID",
-  "set_controller": { "schedule": false, "sensor": false },
-  "valve_data": { "set_angle": true, "angle": 45 }
-}
-```
-- Device updates valve state and may publish updated state in response.
+* `mqtt_handle_topic(const char *data)`
+  Routes messages based on `"event"` field.
 
-**Topic:** `vortex_device/wifi_valve/<DEVICE_ID>/control_data`
-```json
-{
-  "event": "set_valve_wifi",
-  "device_id": "DEVICE_ID",
-  "wifi_data": { "ssid": "YourSSID", "password": "YourPassword" }
-}
-```
-- Device updates WiFi credentials, saves to NVS, and may restart if changed.
+* `create_valve_status()`
 
-### 3. Error Reporting
+* `create_valve_state_data()`
 
-**Topic:** `vortex_device/wifi_valve/<DEVICE_ID>/error`
-```json
-{
-  "event": "valve_error",
-  "timestamp": "YYYY-MM-DD HH:MM:SS",
-  "device_id": "DEVICE_ID",
-  "error": "Overcurrent detected"
-}
-```
+* `create_valve_error()`
+  Build JSON payloads for publishing.
 
 ---
 
 ## Publish Frequency
 
-- Valve state, status, and error data are published every **5 seconds** by the FreeRTOS task `mqtt_publish_valve_data_task`.
+* Data is published every **5 seconds**
+* Managed by:
+
+  ```c
+  mqtt_publish_valve_data_task
+  ```
 
 ---
 
 ## Security
 
-- All MQTT communication uses TLS (with CA certificate).
-- Device ID and credentials are set via menuconfig.
+* Uses **TLS encryption**
+* CA certificate is embedded in firmware
+* Broker verification is enabled
+* Device ID is used as MQTT client ID
 
 ---
 
 ## Integration Points
 
-- MQTT client is managed in `softap_sta.c` based on WiFi connection state.
-- Device state is updated and published in response to both local and remote events.
+* MQTT is controlled by WiFi state (`softap_sta.c`)
+* Starts on WiFi connect
+* Stops on WiFi disconnect
+
+Device data flow:
+
+* Local sensors → update `valveData`
+* Remote commands → update `serverData` / `serverControl`
+* MQTT → publishes current state every 5 seconds
 
 ---
 
 ## Summary
 
-This module provides robust, secure, and scalable MQTT communication for smart device control and monitoring, with clear message flows, periodic updates, and remote command handling.
+This module provides:
 
----
+* Reliable MQTT communication with TLS security
+* Periodic telemetry and real-time control
+* Structured JSON-based messaging
+* Thread-safe shared data handling using FreeRTOS
+
+It is designed to be scalable, maintainable, and easy to integrate with cloud-based IoT platforms.
