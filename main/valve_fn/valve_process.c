@@ -1,3 +1,13 @@
+/**
+ * @file valve_process.c
+ * @brief Valve motor and limit switch control for ESP32
+ *
+ * This module manages:
+ *  - Motor initialization and operation (open/close)
+ *  - Limit switch detection (open/close)
+ *  - LED indicators for status
+ *  - Updating shared `valveData` structure with status and error info
+ */
 #include "sdkconfig.h" 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -11,7 +21,7 @@
 #include "valve_process.h"
 
 
-// define Valve pins
+/* =================== PIN CONFIGURATION =================== */
 #define MOTOR_EN_PIN        CONFIG_MOTOR_EN_PIN
 #define MOTOR_IN1_PIN       CONFIG_MOTOR_IN1_PIN
 #define MOTOR_IN2_PIN       CONFIG_MOTOR_IN2_PIN
@@ -24,7 +34,7 @@
 #define RED_LED_PIN         CONFIG_RED_LED_PIN
 #define GREEN_LED_PIN       CONFIG_GREEN_LED_PIN
 
-
+/* =================== HARDWARE OBJECTS =================== */
 Motor motor = { MOTOR_IN1_PIN, MOTOR_IN2_PIN, MOTOR_EN_PIN, 0 };
 LimitSwitches closeLimit = { CLOSE_LIMIT_PIN_A, CLOSE_LIMIT_PIN_B };
 LimitSwitches openLimit = { OPEN_LIMIT_PIN_A, OPEN_LIMIT_PIN_B };
@@ -32,12 +42,14 @@ LedIndicator redLED = { RED_LED_PIN };
 LedIndicator greenLED = { GREEN_LED_PIN };
 
 
-
-
 static const char *TAG = "VALVE_PROCESS";
 
-
-
+/**
+ * @brief Initialize the valve system hardware
+ *
+ * Initializes motor, limit switches, and LEDs. 
+ * Provides an LED blink test on startup for user feedback.
+ */
 void init_valve_system(void) {
     motor_init(&motor);
     limit_switch_init(&closeLimit);
@@ -58,7 +70,18 @@ void init_valve_system(void) {
 }
 
 
-
+/**
+ * @brief Read limit switch states and update valveData
+ *
+ * Uses `limit_switch_click()` to detect:
+ *  - 10: clicked
+ *  - 1: not clicked
+ *  - 0: error
+ *
+ * Updates `valveData` flags for open/close availability and click state.
+ *
+ * @return Error code if limit switch unavailable, 0 otherwise
+ */
 int valve_test(void)
 {
     int closeLimitState = limit_switch_click(&closeLimit);
@@ -107,6 +130,14 @@ int valve_test(void)
 }
 
 
+/**
+ * @brief Open the valve
+ *
+ * Rotates motor anti-clockwise until the open limit switch is triggered
+ * or timeout occurs. Updates LED indicators and `valveData`.
+ *
+ * @return 0 on success, error code on failure
+ */
 int motor_open(void) {
     unsigned long op_start = xTaskGetTickCount() * portTICK_PERIOD_MS;
     const unsigned long op_timeout = 10000;
@@ -165,6 +196,14 @@ int motor_open(void) {
 }
 
 
+/**
+ * @brief Close the valve
+ *
+ * Rotates motor clockwise until the close limit switch is triggered
+ * or timeout occurs. Updates LED indicators and `valveData`.
+ *
+ * @return 0 on success, error code on failure
+ */
 int motor_close(void) {
     unsigned long op_start = xTaskGetTickCount() * portTICK_PERIOD_MS;
     const unsigned long op_timeout = 10000;
@@ -222,11 +261,6 @@ int motor_close(void) {
     return errorCode;
 }
 
-// int valveSetPosition(int angle) {
-//     if (angle == 90) return motorOpen();
-//     if (angle == 0) return motorClose();
-//     return 901;  // Invalid angle
-// }
 
 
 

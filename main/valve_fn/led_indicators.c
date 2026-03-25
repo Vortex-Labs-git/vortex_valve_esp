@@ -1,3 +1,20 @@
+/**
+ * @file led_indicators.c
+ * @brief LED management task for ESP32 Smart Valve Controller
+ *
+ * This module handles multiple LEDs with different operating modes:
+ *  - ON
+ *  - OFF
+ *  - BLINK (fixed period)
+ *  - BLINK2 (asymmetric ON/OFF periods)
+ *
+ * Features:
+ *  - Central FreeRTOS task updates all LEDs in parallel
+ *  - Timing handled using FreeRTOS ticks (non-blocking)
+ *  - Dynamic mode switching at runtime
+ *  - Logging for debug and monitoring
+ */
+
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -7,13 +24,25 @@
 #include "led_indicators.h"
 
 
+/**
+ * @brief Maximum number of LEDs supported
+ */
 #define MAX_LED_COUNT        3
+
+/**
+ * @brief Task execution period for LED task in milliseconds
+ *
+ * Determines how often the LED states are updated.
+ */
 #define LED_TASK_PERIOD_MS  20
 
 static const char *TAG_INDICATOR = "LED_INDICATOR";
 
-
-// Internal structure to manage LED states
+/**
+ * @brief Internal LED structure
+ *
+ * Holds the state and timing information for each LED.
+ */
 typedef struct {
     LedIndicator *pub;
     led_mode_t mode;
@@ -24,12 +53,19 @@ typedef struct {
 } LedInternal;
 
 
-// Define LED object array
+/**
+ * @brief Array storing internal LED objects
+ */
 static LedInternal leds[MAX_LED_COUNT];
 static uint8_t led_count = 0;
 
 
-// LED object finder
+/**
+ * @brief Find internal LED structure from public LED object
+ *
+ * @param led Pointer to public LED object
+ * @return Pointer to internal LED structure, or NULL if not found
+ */
 static LedInternal *find_internal_led(LedIndicator *led)
 {
     for (int i = 0; i < led_count; i++) {
@@ -40,7 +76,17 @@ static LedInternal *find_internal_led(LedIndicator *led)
 }
 
 
-// LED parallel task
+
+/**
+ * @brief FreeRTOS task to update all LED states
+ *
+ * Responsibilities:
+ *  - Reads current mode and timing from internal LED structures
+ *  - Toggles pins according to mode and elapsed time
+ *  - Runs periodically every LED_TASK_PERIOD_MS
+ *
+ * @param arg Not used
+ */
 static void led_task(void *arg)
 {
     while (1) {
@@ -90,6 +136,13 @@ static void led_task(void *arg)
 }
 
 
+/**
+ * @brief Initialize an LED object
+ *
+ * Configures GPIO, initializes internal state, and ensures the LED task is running.
+ *
+ * @param led Pointer to public LED object
+ */
 void led_init(LedIndicator *led)
 {
     gpio_set_direction(led->pin, GPIO_MODE_OUTPUT);
@@ -112,8 +165,11 @@ void led_init(LedIndicator *led)
 }
 
 
-// LED functions
-
+/**
+ * @brief Set LED to ON mode
+ *
+ * @param led Pointer to public LED object
+ */
 void led_on(LedIndicator *led)
 {
     LedInternal *internal_led = find_internal_led(led);
@@ -125,6 +181,11 @@ void led_on(LedIndicator *led)
     if (internal_led) internal_led->mode = LED_MODE_ON;
 }
 
+/**
+ * @brief Set LED to OFF mode
+ *
+ * @param led Pointer to public LED object
+ */
 void led_off(LedIndicator *led)
 {
     LedInternal *internal_led = find_internal_led(led);
@@ -137,6 +198,12 @@ void led_off(LedIndicator *led)
     if (internal_led) internal_led->mode = LED_MODE_OFF;
 }
 
+/**
+ * @brief Set LED to blink with fixed period
+ *
+ * @param led Pointer to public LED object
+ * @param period_ms Blink period in milliseconds
+ */
 void led_blink(LedIndicator *led, uint32_t period_ms)
 {
     LedInternal *internal_led = find_internal_led(led);
@@ -153,6 +220,13 @@ void led_blink(LedIndicator *led, uint32_t period_ms)
     }
 }
 
+/**
+ * @brief Set LED to asymmetric blink (different ON and OFF durations)
+ *
+ * @param led Pointer to public LED object
+ * @param on_ms ON duration in milliseconds
+ * @param off_ms OFF duration in milliseconds
+ */
 void led_blink2(LedIndicator *led, uint32_t on_ms, uint32_t off_ms)
 {
     LedInternal *internal_led = find_internal_led(led);
