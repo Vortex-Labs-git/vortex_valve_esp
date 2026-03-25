@@ -1,172 +1,326 @@
-# WebSocket Communication: Message Flow and Examples
+# WebSocket Communication: Mobile App ↔ ESP32 (Offline Mode)
 
-This section details the message communication process between the client and the ESP32 Smart Valve Controller, structured by process flow. Each step includes example JSON messages and describes the device's behavior.
+This document defines the complete WebSocket communication flow between the Vortex Lab mobile application and the ESP32 Smart Valve Controller when operating in **Access Point (AP) mode (offline mode)**.
+
+It includes:
+
+* Connection establishment
+* Authentication
+* Device identification
+* Data visualization
+* Device control
+* Wi-Fi configuration
 
 ---
 
-## 1. Authentication Flow
+# 1. Connection Establishment & Device Identification
 
-Before any command is processed, the client must authenticate.
+## 1.1 User Connection Flow
 
-### Client Request
+1. ESP32 operates in **AP mode**.
+2. User connects mobile device to ESP32 Wi-Fi network.
+3. User opens the **Vortex Lab mobile app**.
+4. The app:
+
+   * Reads the current Wi-Fi SSID
+   * Verifies it matches a Vortex device pattern
+5. If confirmed, the app initiates WebSocket communication.
+
+---
+
+## 1.2 Authentication & Device Info Request
+
+### Client → ESP32
+
 ```json
 {
   "event": "request_device_info",
-  "passkey": "YOUR_PASSKEY"
+  "timestamp": "2025-01-15T10:30:00Z",
+  "user_id": "user_id",
+  "passkey": "key"
 }
 ```
 
-### Device Behavior
-- Compares `passkey` with the configured value.
-- If valid:
-  - Sets `connection_authorized = true`
-  - Sends device info (see below)
-- If invalid:
-  - Connection remains unauthorized
-  - Other events are ignored
+### ESP32 Behavior
+
+* Parses JSON message
+* Validates `passkey`
+
+### If Valid:
+
+* Marks connection as **authorized**
+* Sends device information
+
+### If Invalid:
+
+* Connection remains unauthorized
+* All further requests are ignored
 
 ---
 
-## 2. Outgoing Messages (After Authentication)
+## 1.3 Device Info Response
 
-### 2.1. Device Info
-
-Sent immediately after successful authentication.
+### ESP32 → Client
 
 ```json
 {
   "event": "device_info",
-  "timestamp": "YYYY-MM-DD HH:MM:SS",
-  "device_id": "DEVICE_ID"
+  "timestamp": "2025-01-15T10:30:00Z",
+  "device_id": "dev0016"
 }
 ```
 
 ---
 
-### 2.2. Full Valve State
+# 2. Valve Details Screen – Data Visualization
 
-Sent in response to state requests or when state changes.
+## 2.1 Request Valve Data
+
+When user selects a valve device:
+
+### Client → ESP32
+
+```json
+{
+  "event": "device_basic_info",
+  "timestamp": "2025-01-15T10:30:00Z",
+  "data": {
+    "user_id": "user001",
+    "device_id": "dev0016",
+    "device_name": "home valve"
+  }
+}
+```
+
+---
+
+## 2.2 ESP32 Behavior
+
+* Verifies `device_id`
+* If valid:
+
+  * Reads current valve state
+  * Sends full valve data
+
+---
+
+## 2.3 Valve Data Response
+
+### ESP32 → Client
 
 ```json
 {
   "event": "valve_data",
-  "timestamp": "YYYY-MM-DD HH:MM:SS",
-  "device_id": "DEVICE_ID",
+  "timestamp": "2025-01-15T10:30:00Z",
+  "device_id": "dev0016",
   "get_controller": {
     "schedule": true,
     "sensor": false
   },
   "get_valvedata": {
-    "angle": 90,
+    "angle": 45,
     "is_open": true,
     "is_close": false
   },
   "get_limitdata": {
     "is_open_limit": true,
     "open_limit": false,
-    "is_close_limit": true,
-    "close_limit": false
+    "is_close_limit": false,
+    "close_limit": true
   },
-  "Error": "No Error"
+  "Error": ""
 }
 ```
 
-Thread Safety: Uses `valveMutex` to protect shared data.
+---
+
+## 2.4 Notes
+
+* Data is protected using **mutex (`valveMutex`)**
+* ESP32 sends a **consistent snapshot** of internal state
 
 ---
 
-## 3. Supported WebSocket Events (After Authentication)
+# 3. Valve Control (Data Editing)
 
-### 3.1. Request Valve State
-
-**Event:** `device_basic_info`
-
-#### Client Request
-```json
-{
-  "event": "device_basic_info",
-  "data": {
-    "user_id": "123",
-    "device_id": "DEVICE_ID"
-  }
-}
-```
-
-#### Device Behavior
-- Verifies `device_id`.
-- If correct, sends full valve state (`send_device_data`).
+The same Valve Details screen is used for control operations.
 
 ---
 
-### 3.2. Manual Valve Control
+## 3.1 Supported Controls
 
-**Event:** `set_valve_basic`
+* Fully Open
+* Fully Close
+* Set specific angle
+* Update valve nickname (app-level use)
 
-#### Client Request
+---
+
+## 3.2 Control Request
+
+### Client → ESP32
+
 ```json
 {
   "event": "set_valve_basic",
+  "timestamp": "2025-01-15T10:30:00Z",
+  "device_id": "dev0016",
+  "set_controller": {
+    "schedule": false,
+    "sensor": false
+  },
   "valve_data": {
+    "name": "MainValve01",
     "set_angle": true,
     "angle": 45
-  }
+  },
+  "ota_update": false
 }
 ```
 
-#### Device Behavior
-- Disables schedule and sensor control.
-- Validates `set_angle` and updates valve position.
-- Updates `serverData` using `serverMutex`.
+---
+
+## 3.3 ESP32 Behavior
+
+* Disables:
+
+  * Schedule control
+  * Sensor control
+* Checks `set_angle`:
+
+  * If `true`, updates valve angle
+* Updates internal control structure (`serverData`)
+  using **`serverMutex`**
+
+### Important Notes
+
+* `name` is not currently used by ESP32 logic (optional field)
+* No acknowledgment message is sent back
+* No validation feedback is returned to client
 
 ---
 
-### 3.3. Update WiFi Credentials
+# 4. Wi-Fi Configuration (STA Mode)
 
-**Event:** `set_valve_wifi`
+## 4.1 User Action
 
-#### Client Request
+* User taps **“Change Wi-Fi Connection”**
+* Enters SSID and password
+* Confirms update
+
+---
+
+## 4.2 Wi-Fi Update Request
+
+### Client → ESP32
+
 ```json
 {
   "event": "set_valve_wifi",
+  "timestamp": "2025-01-15T10:30:00Z",
+  "device_id": "dev0016",
   "wifi_data": {
-    "ssid": "YourSSID",
-    "password": "YourPassword"
+    "ssid": "myNetWork",
+    "password": "1234"
   }
 }
 ```
 
-#### Device Behavior
-- Validates SSID and password.
-- Compares with existing credentials.
-- If changed:
-  - Saves using `wifi_storage_save()`
-  - Calls `esp_restart()`
-- If unchanged:
-  - No action taken
+---
+
+## 4.3 ESP32 Behavior
+
+* Validates `ssid` and `password`
+* Compares with stored credentials
+
+### If Changed:
+
+* Updates internal storage
+* Saves using `wifi_storage_save()`
+* Restarts device using `esp_restart()`
+
+### If Unchanged:
+
+* No action taken
 
 ---
 
-## 4. Asynchronous Broadcasts
+# 5. Asynchronous Communication
 
-- The device can broadcast state or error messages to all connected clients using `websocket_async_send()`.
-- Example broadcast message:
+ESP32 supports sending messages to all connected WebSocket clients.
+
+## Mechanism
+
+* Uses:
+
+  * `httpd_queue_work()`
+  * `websocket_async_send()`
+* Sends JSON messages to all active WebSocket connections
+
+---
+
+## Example Broadcast
 
 ```json
 {
   "event": "valve_error",
-  "timestamp": "YYYY-MM-DD HH:MM:SS",
-  "device_id": "DEVICE_ID",
+  "timestamp": "2025-01-15T10:30:00Z",
+  "device_id": "dev0016",
   "error": "Overcurrent detected"
 }
 ```
 
 ---
 
-## 5. Error Handling
+# 6. Error Handling
 
-- Invalid JSON, missing fields, or unauthorized access result in error logs and ignored requests.
-- All errors are logged using ESP_LOGE/ESP_LOGW for debugging.
+## Current Behavior
+
+* Invalid JSON → ignored
+* Missing fields → ignored
+* Unauthorized requests → ignored
+* Invalid `device_id` → ignored
+
+## Logging
+
+* Errors and warnings are logged internally using:
+
+  * `ESP_LOGE`
+  * `ESP_LOGW`
+  * `ESP_LOGI`
+
+> ⚠️ No error responses are sent to the client (log-only system)
 
 ---
 
-This structured flow ensures secure, reliable, and clear communication between the client and the ESP32 device, supporting robust remote control and monitoring.
+# 7. Communication Rules Summary
+
+### Client Must:
+
+1. Connect to ESP32 Wi-Fi (AP mode)
+2. Establish WebSocket connection (`/ws`)
+3. Authenticate using `request_device_info`
+4. Send only supported events
+
+---
+
+### ESP32 Will:
+
+* Reject all messages before authentication
+* Process only valid JSON messages
+* Respond with structured JSON events
+* Broadcast updates when required
+
+---
+
+# ✅ Final Notes
+
+This WebSocket protocol enables:
+
+* Offline device discovery
+* Secure (passkey-based) access
+* Real-time valve monitoring
+* Direct device control
+* Wi-Fi provisioning
+
+---

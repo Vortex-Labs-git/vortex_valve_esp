@@ -1,99 +1,510 @@
-# ESP32 WebSocket Server: Advanced Documentation
+# ESP32 WebSocket Server: Internal Process & Function Flow
 
-This document provides an in-depth overview of the WebSocket server implementation for the ESP32 Smart Valve Controller, focusing on the architecture, process flow, and key functions found in the `websocket_fn` folder.
-
----
-
-## Overview
-The WebSocket server enables real-time, bidirectional communication between the ESP32 device and remote clients (such as mobile apps or web dashboards). It is designed for secure, asynchronous, and thread-safe operation, supporting both device control and monitoring.
+This document explains how the WebSocket server operates internally on the ESP32, focusing on **execution flow, function roles, and data handling**.
 
 ---
 
-## Process Flow
+# 1. High-Level Flow
 
-### 1. Initialization
-- The WebSocket server is initialized as part of the HTTP server setup.
-- The server is started when a client connects to the ESP32 AP (Access Point mode).
-- Handles are maintained for the server instance and client connections.
+The system follows this pipeline:
 
-**Key Functions:**
-- `start_webserver(void)`: Starts the HTTP/WebSocket server.
-- `stop_webserver(void)`: Stops the server and resets state.
+```
+Client → WebSocket → ws_handler → process_message → offline_data → State Update / Response
+```
 
-### 2. Client Connection & Authentication
-- When a client connects, the server checks for a valid authentication passkey (from menuconfig).
-- Only authorized clients can send/receive data.
-- Connection state is tracked with flags.
+There are **two main paths**:
 
-**Key Functions:**
-- `connection_authorized`: Boolean flag for client authentication.
-
-### 3. Data Reading & Event Handling
-- The server receives JSON messages from clients via WebSocket.
-- Each message is parsed and dispatched based on its `event` field (e.g., `device_basic_info`, `set_valve_basic`).
-- Data is validated and processed, with mutex protection for shared resources.
-
-**Key Functions:**
-- `websocket_event_handler(...)`: Handles incoming WebSocket events and messages.
-- `websocket_state_fn.c` functions: Process specific events and update device state.
-
-### 4. Data Processing & State Updates
-- Device state (valve position, schedule, WiFi credentials, etc.) is updated based on client commands.
-- All updates are thread-safe using FreeRTOS mutexes.
-- Changes are persisted to NVS (EEPROM) when necessary.
-
-**Key Functions:**
-- `send_device_info(void)`: Sends device identification info.
-- `send_device_data(void)`: Sends full valve state.
-- `send_error_message(const char*)`: Sends error notifications.
-- `websocket_async_send(void*)`: Asynchronously broadcasts JSON messages to all clients.
-
-### 5. Outgoing Communication
-- The server sends JSON-formatted responses and state updates to clients.
-- Asynchronous broadcasting ensures all connected clients receive updates in real time.
-- Timestamps and device IDs are included for traceability.
-
-**Key Functions:**
-- `websocket_async_send(void*)`: Core function for sending data to clients.
-- `httpd_queue_work(...)`: Used for thread-safe, non-blocking message delivery.
+1. Incoming message handling
+2. Outgoing asynchronous response
 
 ---
 
-## Security & Thread Safety
-- Passkey-based authentication for all WebSocket clients.
-- FreeRTOS mutexes protect shared data structures during concurrent access.
-- Memory management is handled carefully to avoid leaks (allocated JSON strings are freed after use).
+# 2. Server Lifecycle
+
+## 2.1 `start_webserver(void)`
+
+### Responsibility
+
+* Initializes and starts the HTTP server
+* Registers WebSocket endpoint `/ws`
+
+### Flow
+
+1. Check if server already running
+2. Load default config:
+
+```c
+httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+```
+
+3. Enable LRU cleanup:
+
+```c
+config.lru_purge_enable = true;
+```
+
+4. Start server:
+
+```c
+httpd_start(&esp_server, &config);
+```
+
+5. Register WebSocket handler:
+
+```c
+httpd_register_uri_handler(...);
+```
+
+### Result
+
+* Server is ready to accept WebSocket connections
 
 ---
 
-## Extensibility
-- The event-driven architecture allows easy addition of new commands/events.
-- JSON schema can be extended for new device features.
-- Designed for integration with mobile apps, dashboards, or cloud services.
+## 2.2 `stop_webserver(void)`
+
+### Responsibility
+
+* Clean shutdown
+
+### Actions
+
+* Stops HTTP server
+* Resets:
+
+```c
+esp_server = NULL;
+connection_authorized = false;
+```
 
 ---
 
-## File Structure
-- `websocket_server_fn.c`: Server lifecycle, client management, async broadcast.
-- `websocket_state_fn.c`: Event processing, state updates, outgoing message formatting.
-- `websocket_server_fn.h` / `websocket_state_fn.h`: Function declarations and shared definitions.
+# 3. Connection Handling
+
+## 3.1 `ws_handler(httpd_req_t *req)`
+
+This is the **core entry point for all WebSocket activity**.
 
 ---
 
-## Example Event Flow
-1. Client connects to ESP32 AP and opens WebSocket.
-2. Client sends authentication message with passkey.
-3. Server validates and authorizes connection.
-4. Client requests device info or sends control command.
-5. Server processes request, updates state, and responds with JSON message.
-6. All connected clients receive real-time updates as state changes.
+### Case 1: Handshake (Connection Open)
+
+```c
+if (req->method == HTTP_GET)
+```
+
+### Behavior
+
+* Triggered during WebSocket upgrade
+* Logs connection
+* No authentication here
 
 ---
 
-## References
-- See `websocket_fn/readme.md` for message formats and supported events.
-- See `websocket_server_fn.c` and `websocket_state_fn.c` for implementation details.
+### Case 2: Data Frame Received
+
+#### Step-by-step:
+
+### 1. Get payload length
+
+```c
+httpd_ws_recv_frame(req, &ws_pkt, 0);
+```
+
+### 2. Allocate buffer
+
+```c
+buf = calloc(1, ws_pkt.len + 1);
+```
+
+### 3. Receive payload
+
+```c
+httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
+```
+
+### 4. Process message
+
+```c
+process_message((char*)ws_pkt.payload, &connection_authorized);
+```
+
+### 5. Cleanup
+
+```c
+free(buf);
+```
 
 ---
 
-This architecture ensures robust, secure, and scalable WebSocket communication for smart device control and monitoring.
+# 4. Message Processing Layer
+
+## 4.1 `process_message(const char *payload, bool *connection_authorized)`
+
+### Responsibility
+
+* Parse JSON
+* Handle authentication
+* Route events
+
+---
+
+## Step-by-step Flow
+
+### 1. Parse JSON
+
+```c
+cJSON_Parse(payload);
+```
+
+If fails → exit
+
+---
+
+### 2. Extract event
+
+```c
+cJSON_GetObjectItem(json, "event");
+```
+
+If missing → exit
+
+---
+
+## 4.2 Authorization Logic
+
+### Case A: Already Authorized
+
+```c
+if (*connection_authorized)
+```
+
+➡ Forward to:
+
+```c
+offline_data(event, json);
+```
+
+---
+
+### Case B: Not Authorized
+
+Only allowed event:
+
+```c
+"request_device_info"
+```
+
+---
+
+### Passkey Validation
+
+```c
+strcmp(passkey->valuestring, PASSKEY_VALUE)
+```
+
+---
+
+### If Valid
+
+```c
+*connection_authorized = true;
+send_device_info();
+```
+
+---
+
+### If Invalid
+
+* Remains unauthorized
+* Message ignored
+
+---
+
+# 5. Event Dispatcher
+
+## 5.1 `offline_data(cJSON *event, cJSON *json)`
+
+### Responsibility
+
+* Handles all post-authentication events
+* Acts as a dispatcher
+
+---
+
+## Supported Events
+
+---
+
+## 5.1.1 `device_basic_info`
+
+### Flow
+
+1. Extract:
+
+```c
+data → device_id, user_id
+```
+
+2. Validate device:
+
+```c
+strcmp(device_id, DEVICE_ID)
+```
+
+3. If valid:
+
+```c
+send_device_data();
+```
+
+---
+
+## 5.1.2 `set_valve_basic`
+
+### Flow
+
+1. Extract:
+
+```c
+valve_data
+```
+
+2. Initialize control:
+
+```c
+schedule_control = false;
+sensor_control = false;
+```
+
+3. Check:
+
+```c
+set_angle == true
+```
+
+4. Read angle:
+
+```c
+angle->valueint
+```
+
+5. Update shared state:
+
+```c
+xSemaphoreTake(serverMutex);
+serverData = localCopy;
+xSemaphoreGive(serverMutex);
+```
+
+---
+
+## 5.1.3 `set_valve_wifi`
+
+### Flow
+
+1. Extract:
+
+```c
+wifi_data → ssid, password
+```
+
+2. Validate strings
+
+3. Compare with stored credentials
+
+---
+
+### If changed:
+
+```c
+strncpy(...)
+wifi_storage_save();
+esp_restart();
+```
+
+---
+
+### If unchanged:
+
+* No action
+
+---
+
+# 6. Outgoing Data Flow
+
+---
+
+## 6.1 `send_device_info()`
+
+### Responsibility
+
+* Send device identification
+
+### Flow
+
+1. Generate timestamp
+2. Build JSON
+3. Convert to string
+4. Send asynchronously:
+
+```c
+httpd_queue_work(..., websocket_async_send, json_string);
+```
+
+---
+
+## 6.2 `send_device_data()`
+
+### Responsibility
+
+* Send full valve state
+
+---
+
+### Step-by-step
+
+1. Copy shared data safely:
+
+```c
+xSemaphoreTake(valveMutex);
+localCopy = valveData;
+xSemaphoreGive(valveMutex);
+```
+
+2. Build JSON structure:
+
+* controller
+* valve state
+* limit switches
+* error
+
+3. Send asynchronously
+
+---
+
+# 7. Asynchronous Transmission
+
+## 7.1 `websocket_async_send(void *arg)`
+
+### Responsibility
+
+* Broadcast message to all clients
+
+---
+
+### Flow
+
+1. Get client list:
+
+```c
+httpd_get_client_list()
+```
+
+2. Loop through clients
+
+3. Check:
+
+```c
+HTTPD_WS_CLIENT_WEBSOCKET
+```
+
+4. Send frame:
+
+```c
+httpd_ws_send_frame_async()
+```
+
+---
+
+### Final Step
+
+```c
+free(json_string);
+```
+
+---
+
+# 8. Concurrency & Data Safety
+
+## Mutex Usage
+
+### Valve Data
+
+```c
+valveMutex
+```
+
+### Control Data
+
+```c
+serverMutex
+```
+
+---
+
+## Strategy
+
+* Copy before use
+* Lock only when necessary
+* Avoid blocking WebSocket task
+
+---
+
+# 9. Important Behavioral Notes
+
+## 9.1 Single Authorization State
+
+```c
+bool connection_authorized
+```
+
+* Shared globally
+* Not per-client
+* Suitable for AP mode (single user assumption)
+
+---
+
+## 9.2 No Response Feedback
+
+* No ACK messages
+* No error responses
+* Only logs are generated
+
+---
+
+## 9.3 Event-Driven Design
+
+* All logic depends on:
+
+```c
+"event"
+```
+
+* Easy to extend
+
+---
+
+# 10. Complete Execution Flow (Simplified)
+
+```
+1. start_webserver()
+2. Client connects → ws_handler (GET)
+3. Client sends JSON
+4. ws_handler → process_message()
+
+5. If not authorized:
+      → validate passkey
+      → send_device_info()
+
+6. If authorized:
+      → offline_data()
+
+7. Event handled:
+      → update state OR send response
+
+8. Response:
+      → httpd_queue_work()
+      → websocket_async_send()
+      → client receives data
+```

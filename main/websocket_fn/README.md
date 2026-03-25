@@ -3,269 +3,307 @@
 ---
 
 ## Overview
-This module implements a secure, thread-safe, and scalable WebSocket communication system for the ESP32 Smart Valve Controller using ESP-IDF. It enables real-time device monitoring, remote control, and WiFi credential updates, supporting both offline and online operation.
+
+This module implements a **WebSocket-based communication system** that allows a mobile app to interact with the ESP32 Smart Valve Controller in real time.
+
+It is designed to:
+
+* Establish a WebSocket connection
+* Authenticate the client
+* Process incoming commands
+* Send device state updates
+* Broadcast messages to multiple clients
+
+The system operates in a **structured flow**, where each stage is handled by specific functions.
 
 ---
 
-## System Architecture
+## System Flow (End-to-End)
 
-### Components
-1. **WebSocket Server Layer**
-   - Handles HTTP server initialization
-   - Manages WebSocket handshake
-   - Receives and processes JSON messages
-   - Broadcasts responses asynchronously
+### Step 1: Server Startup
 
-2. **State & Event Handler Layer**
-   - Processes authenticated events
-   - Sends device and valve data
-   - Updates WiFi credentials
-   - Ensures thread-safe shared memory access
+The system begins by starting an HTTP server with WebSocket support.
 
----
+**Function:**
 
-## Process Flow
+* `start_webserver()`
 
-### 1. Initialization
-- WebSocket server is initialized as part of the HTTP server setup.
-- Started when a client connects to ESP32 AP (Access Point mode).
-- Handles are maintained for server instance and client connections.
+**What it does:**
 
-**Key Functions:**
-- `start_webserver(void)`
-- `stop_webserver(void)`
-
-### 2. Client Connection & Authentication
-- Client must authenticate before any command is processed.
-- Passkey is compared with `CONFIG_WS_PASSKEY_VALUE`.
-- Only authorized clients can send/receive data.
-
-**Example Client Request:**
-```json
-{
-  "event": "request_device_info",
-  "passkey": "YOUR_PASSKEY"
-}
-```
-
-**Device Behavior:**
-- If valid: `connection_authorized = true`, sends device info.
-- If invalid: connection remains unauthorized, other events ignored.
-
-### 3. Data Reading & Event Handling
-- Receives JSON messages from clients via WebSocket.
-- Parses and dispatches based on `event` field.
-- Validates and processes data, mutex protection for shared resources.
-
-**Key Functions:**
-- `ws_handler()`
-- `process_message()`
-- `websocket_event_handler(...)`
-
-### 4. Data Processing & State Updates
-- Device state (valve position, schedule, WiFi credentials, etc.) updated based on client commands.
-- Updates are thread-safe using FreeRTOS mutexes.
-- Changes persisted to NVS (EEPROM) when necessary.
-
-**Key Functions:**
-- `send_device_info(void)`
-- `send_device_data(void)`
-- `websocket_async_send(void*)`
-
-### 5. Outgoing Communication
-- Sends JSON-formatted responses and state updates to clients.
-- Asynchronous broadcasting ensures all connected clients receive updates in real time.
-- Timestamps and device IDs included for traceability.
-
-**Key Functions:**
-- `websocket_async_send(void*)`
-- `httpd_queue_work(...)`
+* Initializes the HTTP server
+* Registers a WebSocket endpoint (`/ws`)
+* Prepares the system to accept client connections
 
 ---
 
-## WebSocket Message Flow & Examples
+### Step 2: Client Connection (Handshake)
 
-### Authentication Flow
+When a client connects, a WebSocket handshake occurs.
 
-**Client Request:**
-```json
-{
-  "event": "request_device_info",
-  "passkey": "YOUR_PASSKEY"
-}
-```
+**Function:**
 
-**Device Response:**
-```json
-{
-  "event": "device_info",
-  "timestamp": "YYYY-MM-DD HH:MM:SS",
-  "device_id": "DEVICE_ID"
-}
-```
+* `ws_handler()`
+
+**What it does:**
+
+* Detects initial HTTP GET request
+* Upgrades the connection to WebSocket
+* Confirms that a new client is connected
+
+At this stage:
+
+* The client is connected
+* But **NOT yet authorized**
 
 ---
 
-### Outgoing Messages (After Authentication)
+### Step 3: Receiving Messages
 
-#### 1. Device Info
-Sent immediately after successful authentication.
+After connection, all incoming messages are handled through the same entry point.
 
-#### 2. Full Valve State
-Sent in response to state requests or when state changes.
+**Function:**
 
-```json
-{
-  "event": "valve_data",
-  "timestamp": "YYYY-MM-DD HH:MM:SS",
-  "device_id": "DEVICE_ID",
-  "get_controller": {
-    "schedule": true,
-    "sensor": false
-  },
-  "get_valvedata": {
-    "angle": 90,
-    "is_open": true,
-    "is_close": false
-  },
-  "get_limitdata": {
-    "is_open_limit": true,
-    "open_limit": false,
-    "is_close_limit": true,
-    "close_limit": false
-  },
-  "Error": "No Error"
-}
-```
+* `ws_handler()`
 
-Thread Safety: Uses `valveMutex` to protect shared data.
+**What it does:**
+
+1. Receives incoming WebSocket frames
+2. Extracts the message payload
+3. Passes the message to:
+
+   * `process_message()`
 
 ---
 
-### Supported WebSocket Events (After Authentication)
+### Step 4: Message Processing & Authentication
 
-#### 1. Request Valve State
-**Event:** `device_basic_info`
+**Function:**
 
-**Client Request:**
-```json
-{
-  "event": "device_basic_info",
-  "data": {
-    "user_id": "123",
-    "device_id": "DEVICE_ID"
-  }
-}
-```
-**Device Behavior:**
-- Verifies `device_id`.
-- If correct, sends full valve state (`send_device_data`).
+* `process_message()`
+
+This is the **central decision-making function**.
 
 ---
 
-#### 2. Manual Valve Control
-**Event:** `set_valve_basic`
+### 4.1 Before Authentication
 
-**Client Request:**
-```json
-{
-  "event": "set_valve_basic",
-  "valve_data": {
-    "set_angle": true,
-    "angle": 45
-  }
-}
-```
-**Device Behavior:**
-- Disables schedule and sensor control.
-- Validates `set_angle` and updates valve position.
-- Updates `serverData` using `serverMutex`.
+Only one event is accepted:
 
----
+* `request_device_info`
 
-#### 3. Update WiFi Credentials
-**Event:** `set_valve_wifi`
+**Process:**
 
-**Client Request:**
-```json
-{
-  "event": "set_valve_wifi",
-  "wifi_data": {
-    "ssid": "YourSSID",
-    "password": "YourPassword"
-  }
-}
-```
-**Device Behavior:**
-- Validates SSID and password.
-- Compares with existing credentials.
-- If changed:
-  - Saves using `wifi_storage_save()`
-  - Calls `esp_restart()`
-- If unchanged:
-  - No action taken
+1. Extract passkey from the message
+2. Compare with configured value
+
+**If valid:**
+
+* Connection is marked as authorized
+* Calls:
+
+  * `send_device_info()`
+
+**If invalid:**
+
+* Request is ignored
+* Client remains unauthorized
 
 ---
 
-### Asynchronous Broadcasts
-- Device can broadcast state or error messages to all connected clients using `websocket_async_send()`.
-- Example broadcast message:
-```json
-{
-  "event": "valve_error",
-  "timestamp": "YYYY-MM-DD HH:MM:SS",
-  "device_id": "DEVICE_ID",
-  "error": "Overcurrent detected"
-}
-```
+### 4.2 After Authentication
+
+All messages are forwarded to:
+
+**Function:**
+
+* `offline_data()`
 
 ---
 
-## Concurrency Protection
-- Mutexes Used:
-  - `valveMutex` → Protects valveData
-  - `serverMutex` → Protects serverData
-- Prevents race conditions between WebSocket, control logic, and sensor update tasks.
+## Step 5: Event Handling (Core Logic)
+
+**Function:**
+
+* `offline_data()`
+
+This function processes all valid commands from the client.
 
 ---
 
-## Memory Management
-- All cJSON objects are deleted after use
-- JSON strings are dynamically allocated and freed
-- Received WebSocket buffers are freed
-- Prevents memory leaks in long-running embedded environment
+### Event 1: Request Device Data
+
+**Flow:**
+
+1. Validate device ID
+2. If correct:
+
+   * Call `send_device_data()`
+
+**Result:**
+
+* Client receives full valve state
 
 ---
 
-## Error Handling
-- Logs errors using ESP_LOGE and ESP_LOGW
-- Checks for:
-  - Invalid JSON format
-  - Missing fields
-  - Invalid device ID
-  - Incorrect passkey
-  - Invalid WiFi structure
-  - WebSocket frame receive errors
+### Event 2: Valve Control
+
+**Flow:**
+
+1. Read control parameters from message
+2. Disable automatic modes (schedule/sensor)
+3. Update valve control state
+
+**Result:**
+
+* Internal state is updated
+* Control task will act on new values
+
+**Important:**
+
+* No response is sent back
 
 ---
 
-## Configuration (menuconfig)
-- `CONFIG_WIFI_VALVE_ID`
-- `CONFIG_WS_PASSKEY_VALUE`
-- Compiled as:
-  - `#define DEVICE_ID CONFIG_WIFI_VALVE_ID`
-  - `#define PASSKEY_VALUE CONFIG_WS_PASSKEY_VALUE`
+### Event 3: WiFi Configuration
+
+**Flow:**
+
+1. Read new SSID and password
+2. Compare with stored credentials
+
+**If changed:**
+
+* Save new credentials
+* Restart ESP32
+
+**If unchanged:**
+
+* Do nothing
 
 ---
 
-## Summary
-This module is designed for reliable offline device control and monitoring, featuring:
-- Passkey-based authentication
-- Structured JSON communication
-- Asynchronous WebSocket broadcasting
-- Remote valve control
-- Remote WiFi reconfiguration
-- Safe memory handling
-- FreeRTOS mutex protection
+## Step 6: Sending Data to Client
+
+### Function: `send_device_info()`
+
+**Purpose:**
+
+* Sends basic device identification
+
+**When used:**
+
+* Immediately after successful authentication
 
 ---
+
+### Function: `send_device_data()`
+
+**Purpose:**
+
+* Sends full valve state
+
+**What it includes:**
+
+* Controller status (schedule/sensor)
+* Valve position (angle, open/close)
+* Limit switch states
+* Error message
+
+**Key Behavior:**
+
+* Reads shared data safely
+* Sends a consistent snapshot
+
+---
+
+## Step 7: Asynchronous Message Sending
+
+### Function: `websocket_async_send()`
+
+This is the **core transmission function**.
+
+---
+
+### How it works:
+
+1. Retrieves all connected clients
+2. Filters only WebSocket connections
+3. Sends the same message to all clients
+
+**Key Characteristics:**
+
+* Non-blocking (asynchronous)
+* Supports multiple clients
+* Automatically frees memory after sending
+
+---
+
+### Why Asynchronous?
+
+Messages are sent using:
+
+* `httpd_queue_work()`
+
+This ensures:
+
+* Safe execution outside the main request context
+* No blocking of WebSocket handler
+* Better performance and stability
+
+---
+
+## Step 8: Server Shutdown
+
+### Function: `stop_webserver()`
+
+**What it does:**
+
+* Stops the HTTP server
+* Closes all connections
+* Resets authentication state
+
+---
+
+## Thread Safety (Conceptual)
+
+The system ensures safe data access by:
+
+* Separating **read operations** (device state)
+* From **write operations** (control commands)
+
+This prevents:
+
+* Data corruption
+* Race conditions between tasks
+
+---
+
+## Error Handling Behavior
+
+The system follows a **silent failure model**:
+
+* Invalid messages → ignored
+* Unauthorized access → ignored
+* Missing fields → ignored
+
+Errors are:
+
+* Logged internally
+* Not sent back to the client
+
+---
+
+
+## Final Summary
+
+The WebSocket module follows a **clean and predictable pipeline**:
+
+1. Start server
+2. Accept connection
+3. Receive message
+4. Authenticate
+5. Route event
+6. Process command
+7. Send response (if needed)
+8. Broadcast updates
+
