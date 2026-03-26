@@ -1,5 +1,5 @@
 idf_component_register(SRCS 
-                            "softap_sta.c"
+                            "main.c"
                             "global_var.c"
                             "eeprom_fn/wifi_storage.c"
                             "eeprom_fn/schedule_storage.c"

@@ -29,7 +29,7 @@ The system dynamically switches between:
 * Switches back to STA when router becomes available
 
 ---
-
+<!-- 
 ### 🔧 Valve Control Modes
 
 | Mode     | Description                        |
@@ -358,4 +358,4 @@ Prevents:
 | Valve Sync    | 1 second  |
 | Schedule Save | 5 seconds |
 
----
+--- -->
