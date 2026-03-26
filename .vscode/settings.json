@@ -17,5 +17,5 @@
     "--compile-commands-dir=${workspaceFolder}/build"
   ],
   "idf.flashType": "UART",
-  "idf.currentSetup": "/home/hp/esp/v5.4.2/esp-idf"
+  "idf.currentSetup": "/home/hp/.espressif/v5.4.3/esp-idf"
 }
