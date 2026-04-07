@@ -447,7 +447,7 @@ CONFIG_ESP_WIFI_STA_MAXIMUM_RETRY=5
 #
 # Device Data Configuration
 #
-CONFIG_WIFI_VALVE_ID="VA202601001"
+CONFIG_WIFI_VALVE_ID="VA202604001"
 CONFIG_WS_PASSKEY_VALUE="12345"
 # end of Device Data Configuration
 
@@ -475,6 +475,16 @@ CONFIG_CLOSE_LIMIT_PIN_B=19
 CONFIG_OPEN_LIMIT_PIN_A=18
 CONFIG_OPEN_LIMIT_PIN_B=5
 # end of Limit Switches Configuration
+
+#
+# Potentiometer Configuration
+#
+
+#
+# Potentiometer Configuration (32,33,34,35,36,39)
+#
+CONFIG_POTENTIOMETER_PIN=34
+# end of Potentiometer Configuration
 
 #
 # LED Indicators Configuration

@@ -141,12 +141,12 @@ void valve_sync_process(void *pvParameters)
                  * Execute motor movement based on requested angle
                  * (Assumes 0° = Closed, 90° = Open)
                  */
-                if (localServerData.angle == 0) {
-                    err_code = motor_close();
-                }
-                else if (localServerData.angle == 90) {
-                    err_code = motor_open();
-                }
+                // if (localServerData.angle == 0) {
+                //     err_code = motor_close();
+                // }
+                // else if (localServerData.angle == 90) {
+                //     err_code = motor_open();
+                // }
 
                 /* ===================================================== */
                 /* 4. UPDATE VALVE STATUS AND ERROR MESSAGE             */
@@ -228,12 +228,12 @@ void valve_sync_process(void *pvParameters)
                 valve_busy = true;
                 int err_code = 0;
 
-                if (target_angle == 90) {
-                    err_code = motor_open();
-                }
-                else {
-                    err_code = motor_close();
-                }
+                // if (target_angle == 90) {
+                //     err_code = motor_open();
+                // }
+                // else {
+                //     err_code = motor_close();
+                // }
 
                 if (xSemaphoreTake(valveMutex, portMAX_DELAY) == pdTRUE) {
                     if (err_code == 0) {
