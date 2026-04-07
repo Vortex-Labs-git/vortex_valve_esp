@@ -1,20 +1,21 @@
 #ifndef VALVE_PROCESS_H
 #define VALVE_PROCESS_H
 
+#include <stdint.h>
+
 #include "led_indicators.h"
 #include "valve_motor.h"
 #include "limit_switch.h"
+#include "pot_read.h"
 
 extern Motor motor;
-extern LimitSwitches closeLimit;
-extern LimitSwitches openLimit;
+extern PotSensor potentiometer;
 extern LedIndicator redLED;
 extern LedIndicator greenLED;
 
 void init_valve_system(void);
-int motor_open(void);
-int motor_close(void);
-int valve_set_position(int angle);
+int valve_test(void);
+int motor_set_angle(int target_angle);
 
 
 #endif // VALVE_PROCESS_H

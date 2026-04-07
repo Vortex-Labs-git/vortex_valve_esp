@@ -129,6 +129,17 @@ menu "Device Configuration"
                 Open Limit Switch pin B number.
     endmenu
 
+    menu "Potentiometer Configuration"
+        comment "Potentiometer Configuration (32,33,34,35,36,39)"
+        
+            config POTENTIOMETER_PIN
+                int "POTENTIOMETER PIN"
+                default 34
+                help
+                    Potentiometer adc pin number.
+
+    endmenu
+
     menu "LED Indicators Configuration"
         comment "LED Indicators Configuration"
 

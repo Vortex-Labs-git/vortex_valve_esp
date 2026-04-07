@@ -11,6 +11,7 @@ idf_component_register(SRCS
                             "valve_fn/led_indicators.c"
                             "valve_fn/valve_motor.c"
                             "valve_fn/limit_switch.c"
+                            "valve_fn/pot_read.c"
                             "valve_fn/valve_process.c"
                             "main_process.c"
                             "test_process.c"

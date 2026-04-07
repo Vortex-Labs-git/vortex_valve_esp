@@ -8,47 +8,34 @@
 
 
 
-// limit test ------------------------------------------------------------
-
-// // use the same pins from menuconfig
-// #define CLOSE_LIMIT_PIN_A   CONFIG_CLOSE_LIMIT_PIN_A
-// #define CLOSE_LIMIT_PIN_B   CONFIG_CLOSE_LIMIT_PIN_B
-// #define OPEN_LIMIT_PIN_A    CONFIG_OPEN_LIMIT_PIN_A
-// #define OPEN_LIMIT_PIN_B    CONFIG_OPEN_LIMIT_PIN_B
-
-static const char *LIMIT_TAG = "LIMIT_TEST";
-
-// // create limit switch objects
-// static LimitSwitches closeLimit = { CLOSE_LIMIT_PIN_A, CLOSE_LIMIT_PIN_B };
-// static LimitSwitches openLimit  = { OPEN_LIMIT_PIN_A,  OPEN_LIMIT_PIN_B };
 
 
-static void limit_monitor_task(void *arg)
+// ---------------------- pot test -------------------------
+
+static const char *POT_TAG = "POT_TEST";
+
+static void pot_sensor_read_task(void *arg)
 {
     while (1)
     {
-        int closeState = limit_switch_click(&closeLimit);
-        int openState  = limit_switch_click(&openLimit);
+        int potValue = pot_read_filtered(&potentiometer);
+        float current_angle = pot_to_angle(&potentiometer, potValue);
 
-        ESP_LOGI(LIMIT_TAG,
-                 "CloseLimit: %d | OpenLimit: %d",
-                 closeState,
-                 openState);
+        ESP_LOGI(POT_TAG, "potentiometer adc read: %d, angle: %.2f", potValue, current_angle);
 
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
 
-void start_limit_test(void)
+void start_pot_test(void)
 {
-    limit_switch_init(&closeLimit);
-    limit_switch_init(&openLimit);
+    pot_sensor_init(&potentiometer);
 
-    ESP_LOGI(LIMIT_TAG, "Limit switches initialized");
+    ESP_LOGI(POT_TAG, "Pot sensor initialized");
 
     xTaskCreate(
-        limit_monitor_task,
-        "limit_monitor_task",
+        pot_sensor_read_task,
+        "pot_sensor_read_task",
         2048,
         NULL,
         5,
@@ -57,7 +44,8 @@ void start_limit_test(void)
 }
 
 
-// motor test ------------------------------------------------------------
+
+// ----------------------- motor test ------------------------------------------------------------
 
 // #define MOTOR_EN_PIN  CONFIG_MOTOR_EN_PIN
 // #define MOTOR_IN1_PIN CONFIG_MOTOR_IN1_PIN
@@ -116,7 +104,50 @@ void start_motor_test(void)
 }
 
 
-// valve process test -----------------------------------------------
+// --------------------- valve set pos ------------------------------------
+static const char *POS_TAG = "POS_TEST";
+
+
+static void motor_pos_task(void *arg)
+{
+    valve_test();
+
+    while (1) {
+        motor_set_angle(0);
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+
+        motor_set_angle(45);
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+
+        motor_set_angle(90);
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+
+}
+
+void start_motor_pos(void)
+{
+    pot_sensor_init(&potentiometer);
+    motor_init(&motor);
+
+    ESP_LOGI(POS_TAG, "Motor pos initialized");
+
+    xTaskCreate(
+        motor_pos_task,
+        "motor_pos_task",
+        2048,
+        NULL,
+        5,
+        NULL
+    );
+}
+
+
+
+// ---------------------- valve process test -----------------------------------------------
 
 static const char *PROCESS_TEST_TAG = "VALVE_TOGGLE";
 
@@ -124,38 +155,26 @@ int valve_toggle(void)
 {
     int errorCode = 0;
 
-    // First, check limit switches
-    int closeState = limit_switch_click(&closeLimit);  // 10=clicked, 1=not clicked
-    int openState  = limit_switch_click(&openLimit);
 
-    ESP_LOGI(PROCESS_TEST_TAG, "Limit States - Close: %d, Open: %d", closeState, openState);
+    // ESP_LOGI(PROCESS_TEST_TAG, "Valve is closed. Opening...");
+    // errorCode = motor_open();
+    // if (errorCode != 0) {
+    //     ESP_LOGE(PROCESS_TEST_TAG, "Failed to open valve. Error: %d", errorCode);
+    //     return 902;
+    // }
 
-    // Check for errors first
-    if (closeState == 0 || openState == 0) {
-        ESP_LOGE(PROCESS_TEST_TAG, "Limit switch error detected");
-        return 901;  // error code for limit switch failure
-    }
+    // vTaskDelay(pdMS_TO_TICKS(2000));
 
+    // // Valve is open → close it
 
-    ESP_LOGI(PROCESS_TEST_TAG, "Valve is closed. Opening...");
-    errorCode = motor_open();
-    if (errorCode != 0) {
-        ESP_LOGE(PROCESS_TEST_TAG, "Failed to open valve. Error: %d", errorCode);
-        return 902;
-    }
+    // ESP_LOGI(PROCESS_TEST_TAG, "Valve is open. Closing...");
+    // errorCode = motor_close();
+    // if (errorCode != 0) {
+    //     ESP_LOGE(PROCESS_TEST_TAG, "Failed to close valve. Error: %d", errorCode);
+    //     return 903;
+    // }
 
-    vTaskDelay(pdMS_TO_TICKS(2000));
-
-    // Valve is open → close it
-
-    ESP_LOGI(PROCESS_TEST_TAG, "Valve is open. Closing...");
-    errorCode = motor_close();
-    if (errorCode != 0) {
-        ESP_LOGE(PROCESS_TEST_TAG, "Failed to close valve. Error: %d", errorCode);
-        return 903;
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(2000));
+    // vTaskDelay(pdMS_TO_TICKS(2000));
 
     return 0;
 }
@@ -186,3 +205,4 @@ void start_valve_toggle_test(void)
         NULL
     );
 }
+
