@@ -89,12 +89,28 @@ void init_valve_system(void) {
     led_on(&redLED);
     led_on(&greenLED);
 
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(2000));
 
     led_off(&redLED);
     led_off(&greenLED);
 
     ESP_LOGI(TAG, "Valve system initialized");
+}
+
+void motor_rotate_clk()
+{
+    motor_run_clk(&motor, 200);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    motor_stop(&motor);
+    ESP_LOGI(TAG, "Motor rotate bit clockwise ");
+}
+
+void motor_rotate_aclk()
+{
+    motor_run_aclck(&motor, 200);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    motor_stop(&motor);
+    ESP_LOGI(TAG, "Motor rotate bit clockwise ");
 }
 
 
@@ -122,7 +138,7 @@ int motor_set_angle(int target_angle)
         if (duty > 200) duty = 200;
 
         // Minimum power to overcome friction
-        if (duty < 80) duty = 80;
+        if (duty < 150) duty = 150;
 
         ESP_LOGI(TAG,
             "[PID] Target:%d | Current:%.2f | OUT:%.2f | PWM:%d | ADC:%d",

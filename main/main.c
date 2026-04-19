@@ -431,18 +431,18 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     
-//     // NVS Init
-//     esp_err_t ret = nvs_flash_init();
-//     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-//       ESP_ERROR_CHECK(nvs_flash_erase());
-//       ret = nvs_flash_init();
-//     }
-//     ESP_ERROR_CHECK(ret);
+    // NVS Init
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      ESP_ERROR_CHECK(nvs_flash_erase());
+      ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
 
-// #if CONFIG_ESP_WIFI_STA_MODE_RESET
-//     wifi_storage_restore_default();
-// #endif
+#if CONFIG_ESP_WIFI_STA_MODE_RESET
+    wifi_storage_restore_default();
+#endif
 
 //     wifi_storage_load();
 
@@ -452,24 +452,24 @@ void app_main(void)
         return;
     }
 
-//     serverMutex = xSemaphoreCreateMutex();
-//     if (serverMutex == NULL) {
-//         ESP_LOGE(TAG_MAIN, "Failed to create serverMutex");
-//         return;
-//     }
+    serverMutex = xSemaphoreCreateMutex();
+    if (serverMutex == NULL) {
+        ESP_LOGE(TAG_MAIN, "Failed to create serverMutex");
+        return;
+    }
 
-//     load_eeprom_schedule();
+    load_eeprom_schedule();
 
 
     init_valve_system();
     // start_limit_test();
     // start_pot_test();
     // start_motor_test();
-    start_motor_pos();
+    // start_motor_pos();
     // start_valve_toggle_test();
 
 
-    // wifi_init_smart_mode();
+    wifi_init_smart_mode();
 
     // xTaskCreate(obtain_time, "obtain_time", 4096, NULL, 5, NULL);
 
