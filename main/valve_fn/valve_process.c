@@ -25,14 +25,14 @@
 #define GREEN_LED_PIN       CONFIG_GREEN_LED_PIN
 
 /* =================== CALIBRATION =================== */
-#define ADC_MIN_VALID   1400
-#define ADC_MAX_VALID   2600
-#define ADC_CLOSE   1500   // 0°
-#define ADC_OPEN    2500    // 90°
+// #define ADC_CLOSE   1500   // 0°
+// #define ADC_OPEN    2500    // 90°
+// #define ADC_MIN_VALID   ADC_CLOSE - 100
+// #define ADC_MAX_VALID   ADC_OPEN + 100
 
 /* =================== HARDWARE OBJECTS =================== */
 Motor motor = { MOTOR_IN1_PIN, MOTOR_IN2_PIN, MOTOR_EN_PIN, 0 };
-PotSensor potentiometer = {POTENTIOMETER_PIN, 0, ADC_CLOSE, ADC_OPEN};
+PotSensor potentiometer = {POTENTIOMETER_PIN, 0, 1500, 2500};
 LedIndicator redLED = { RED_LED_PIN };
 LedIndicator greenLED = { GREEN_LED_PIN };
 
@@ -48,7 +48,7 @@ typedef struct {
 } PIDController;
 
 PIDController pidValue = {
-        .kp = 2.0,
+        .kp = 4.0,
         .ki = 0.01,
         .kd = 0.4,
         .prev_error = 0,
@@ -94,23 +94,44 @@ void init_valve_system(void) {
     led_off(&redLED);
     led_off(&greenLED);
 
+    xSemaphoreTake(valveMutex, portMAX_DELAY);
+    int adc = pot_read_filtered(&potentiometer);
+    float current_angle = pot_to_angle(&potentiometer, adc);
+    valveData.encoder_value = adc;
+    valveData.angle = current_angle;
+    xSemaphoreGive(valveMutex);
+
     ESP_LOGI(TAG, "Valve system initialized");
 }
 
-void motor_rotate_clk()
+void pot_read_update(void)
 {
-    motor_run_clk(&motor, 200);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    motor_stop(&motor);
-    ESP_LOGI(TAG, "Motor rotate bit clockwise ");
+    xSemaphoreTake(valveMutex, portMAX_DELAY);
+    int adc = pot_read_filtered(&potentiometer);
+    float current_angle = pot_to_angle(&potentiometer, adc);
+    valveData.encoder_value = adc;
+    valveData.angle = current_angle;
+    xSemaphoreGive(valveMutex);
 }
 
-void motor_rotate_aclk()
+void motor_rotate_clk(void)
+{
+    motor_run_clk(&motor, 200);
+    vTaskDelay(pdMS_TO_TICKS(200));
+    motor_stop(&motor);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    ESP_LOGI(TAG, "Motor rotate bit clockwise ");
+    pot_read_update();
+}
+
+void motor_rotate_aclk(void)
 {
     motor_run_aclck(&motor, 200);
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(100));
     motor_stop(&motor);
+    vTaskDelay(pdMS_TO_TICKS(50));
     ESP_LOGI(TAG, "Motor rotate bit clockwise ");
+    pot_read_update();
 }
 
 
@@ -135,10 +156,10 @@ int motor_set_angle(int target_angle)
         int duty = (int)fabs(control);
 
         // Limit PWM
-        if (duty > 200) duty = 200;
+        if (duty > 220) duty = 220;
 
         // Minimum power to overcome friction
-        if (duty < 150) duty = 150;
+        if (duty < 200) duty = 200;
 
         ESP_LOGI(TAG,
             "[PID] Target:%d | Current:%.2f | OUT:%.2f | PWM:%d | ADC:%d",
@@ -149,12 +170,13 @@ int motor_set_angle(int target_angle)
             adc
         );
 
-        // Deadband (prevent jitter)
-        if (fabs(control) < 5) {
-            ESP_LOGI(TAG, "Deadband reached → motor stop");
-            motor_stop(&motor);
-        }
-        else if (control > 0) {
+        // // Deadband (prevent jitter)
+        // if (fabs(control) < 5) {
+        //     ESP_LOGI(TAG, "Deadband reached → motor stop");
+        //     motor_stop(&motor);
+        // }
+        // else 
+        if (control > 0) {
             ESP_LOGI(TAG, "Direction: OPEN (ACLK)");
             motor_run_aclck(&motor, duty);  // OPEN
         }
@@ -165,7 +187,7 @@ int motor_set_angle(int target_angle)
 
 
         // Stop condition
-        if (fabs(target_angle - current_angle) < tolerance) {
+        if (fabs(target_angle - current_angle) <= tolerance) {
             motor_stop(&motor);
             vTaskDelay(pdMS_TO_TICKS(100));
             ESP_LOGI(TAG, "Target reached");
@@ -189,11 +211,6 @@ int motor_set_angle(int target_angle)
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 
-    // Update shared state
-    xSemaphoreTake(valveMutex, portMAX_DELAY);
-    valveData.angle = target_angle;
-    xSemaphoreGive(valveMutex);
-
     led_off(&redLED);
 
     return 0;
@@ -213,7 +230,10 @@ int valve_test(void)
         return 101;
     }
 
-    if (adc < ADC_MIN_VALID || adc > ADC_MAX_VALID) {
+    int min_valid = potentiometer.adc_close - 100;
+    int max_valid = potentiometer.adc_open + 100;
+
+    if (adc < min_valid || adc > max_valid) {
         sprintf(valveData.error_msg, "Pot out of range: %d", adc);
         xSemaphoreGive(valveMutex);
         ESP_LOGE(TAG, "Pot out of range: %d", adc);

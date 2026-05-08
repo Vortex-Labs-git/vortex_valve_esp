@@ -1,9 +1,14 @@
 
 #include <stdio.h>
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/timers.h"
 #include "pot_read.h"
+#include "esp_log.h"
+
+#include "global_var.h" 
+
 
 
 
@@ -26,9 +31,29 @@ static adc1_channel_t gpio_to_adc(uint8_t gpio)
 void pot_sensor_init(PotSensor *sensor) {
     sensor->channel = gpio_to_adc(sensor->pin);
 
+    if (sensor->channel == ADC1_CHANNEL_MAX) {
+        ESP_LOGE("POT", "Invalid GPIO for ADC: %d", sensor->pin);
+        return;
+    }
+
+    xSemaphoreTake(valveMutex, portMAX_DELAY);
+    sensor->adc_close = (int)valveData.close_limit_encode;
+    sensor->adc_open  = (int)valveData.open_limit_encode;
+    xSemaphoreGive(valveMutex);
+
     adc1_config_width(ADC_WIDTH_BIT_12);
     adc1_config_channel_atten(sensor->channel, ADC_ATTEN_DB_11);
 
+}
+
+void pot_update_calibration(PotSensor *sensor)
+{
+    xSemaphoreTake(valveMutex, portMAX_DELAY);
+
+    sensor->adc_close = (int)valveData.close_limit_encode;
+    sensor->adc_open  = (int)valveData.open_limit_encode;
+
+    xSemaphoreGive(valveMutex);
 }
 
 int pot_sensor_read(PotSensor *sensor) {
@@ -49,7 +74,23 @@ int pot_read_filtered(PotSensor *sensor)
 
 float pot_to_angle(PotSensor *sensor, int adc)
 {
-    float angle = (float)(adc - sensor->adc_close) * 90.0f / (sensor->adc_open - sensor->adc_close);
+    int close = sensor->adc_close;
+    int open  = sensor->adc_open;
+
+    // Validate calibration
+    if (open <= close) {
+        return -1.0f; // invalid
+    }
+
+    // Clamp ADC into calibrated range
+    if (adc < close) adc = close;
+    if (adc > open)  adc = open;
+
+    float angle = (float)(adc - close) * 90.0f / (open - close);
+
+    // Snap endpoints to avoid jitter
+    if (fabsf(angle) < 1.0f) angle = 0.0f;
+    if (fabsf(angle - 90.0f) < 1.0f) angle = 90.0f;
 
     return angle;
 }

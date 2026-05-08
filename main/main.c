@@ -40,6 +40,7 @@
 #include "global_var.h"
 #include "eeprom_fn/wifi_storage.h"
 #include "eeprom_fn/schedule_storage.h"
+#include "eeprom_fn/encoder_storage.h"
 #include "time_func.h"
 #include "websocket_fn/websocket_server_fn.h"
 #include "mqtt_fn/mqtt_client_fn.h"
@@ -428,6 +429,7 @@ void wifi_init_smart_mode(void)
  */
 void app_main(void)
 {
+
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     
@@ -444,7 +446,7 @@ void app_main(void)
     wifi_storage_restore_default();
 #endif
 
-//     wifi_storage_load();
+    wifi_storage_load();
 
     valveMutex = xSemaphoreCreateMutex();
     if (valveMutex == NULL) {
@@ -459,6 +461,7 @@ void app_main(void)
     }
 
     load_eeprom_schedule();
+    load_eeprom_calibration();
 
 
     init_valve_system();
@@ -471,10 +474,10 @@ void app_main(void)
 
     wifi_init_smart_mode();
 
-    // xTaskCreate(obtain_time, "obtain_time", 4096, NULL, 5, NULL);
+    xTaskCreate(obtain_time, "obtain_time", 4096, NULL, 5, NULL);
 
-    // xTaskCreate(schedule_save_task, "schedule_save_task", 4096, NULL, 5, NULL);
+    xTaskCreate(schedule_save_task, "schedule_save_task", 4096, NULL, 5, NULL);
 
-    // xTaskCreate(valve_sync_process, "valve_sync_process", 4096, NULL, 5, NULL);
+    xTaskCreate(valve_sync_process, "valve_sync_process", 4096, NULL, 5, NULL);
 
 }

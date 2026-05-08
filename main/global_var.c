@@ -104,6 +104,9 @@ GetData valveData = {
     .open_limit_click       = false,
     .close_limit_available  = false,
     .close_limit_click      = false,
+    .encoder_value = 0,
+    .close_limit_encode = 0,
+    .open_limit_encode = 0,
     .error_msg         = ""
 };
 

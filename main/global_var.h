@@ -54,6 +54,9 @@ typedef struct {
     bool open_limit_click;
     bool close_limit_available;
     bool close_limit_click;
+    float encoder_value;
+    float close_limit_encode;
+    float open_limit_encode;
     char error_msg[100];
 } GetData;
 

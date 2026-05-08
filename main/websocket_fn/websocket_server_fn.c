@@ -133,8 +133,9 @@ static esp_err_t ws_handler(httpd_req_t *req)
             // json msg decode
             process_message((char*)ws_pkt.payload, &connection_authorized);
         }
-        
+
         ESP_LOGI(TAG_WEBSERVER, "Got packet with message: %s", ws_pkt.payload);
+        
     }
     
     if (buf) free(buf);

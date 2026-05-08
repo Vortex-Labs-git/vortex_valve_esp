@@ -14,6 +14,9 @@ extern LedIndicator redLED;
 extern LedIndicator greenLED;
 
 void init_valve_system(void);
+void pot_read_update(void);
+void motor_rotate_clk(void);
+void motor_rotate_aclk(void);
 int valve_test(void);
 int motor_set_angle(int target_angle);
 

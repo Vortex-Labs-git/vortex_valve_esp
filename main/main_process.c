@@ -42,6 +42,7 @@
  */
 static bool valve_busy = false;
 
+static const char *TAG_SYNC = "SYNC";
 static const char *TAG_SCHEDULE = "SCHEDULE";
 
 
@@ -83,6 +84,8 @@ void valve_sync_process(void *pvParameters)
     (void) pvParameters;
 
     while (1) {
+
+        // ESP_LOGI(TAG_SYNC, "Sync process");
 
         /* ============================================================= */
         /* 1. SAFELY COPY SERVER DATA                                   */
@@ -142,10 +145,10 @@ void valve_sync_process(void *pvParameters)
                  * Execute motor movement based on requested angle
                  * (Assumes 0° = Closed, 90° = Open)
                  */
-                const float tolerance = 2.0; 
+                const float tolerance = 5.0; 
                 int adc = pot_read_filtered(&potentiometer);
                 float current_angle = pot_to_angle(&potentiometer, adc);
-                if (fabs(localServerData.set_angle - current_angle) > tolerance) {
+                if (fabs(localServerData.angle - current_angle) >= tolerance) {
                     err_code = motor_set_angle(localServerData.angle);
                 }
                 
@@ -160,7 +163,10 @@ void valve_sync_process(void *pvParameters)
                     /**
                      * Successful movement
                      */
-                    valveData.angle = localServerData.angle;
+                    int adc = pot_read_filtered(&potentiometer);
+                    float current_angle = pot_to_angle(&potentiometer, adc);
+                    valveData.encoder_value = adc;
+                    valveData.angle = current_angle;
                     valveData.error_msg[0] = '\0';   // Clear error message
                 }
                 else {
@@ -224,37 +230,34 @@ void valve_sync_process(void *pvParameters)
 
             int target_angle = should_open ? 90 : 0;
 
-            if (!valve_busy && valveData.angle != target_angle) {
+            float current_angle;
+            const float tolerance = 2.0;
+            int adc = pot_read_filtered(&potentiometer);
+            current_angle = pot_to_angle(&potentiometer, adc);
+
+            if (!valve_busy && fabs(target_angle - current_angle) > tolerance) {
 
                 valve_busy = true;
-                int err_code = 0;
 
-                // if (target_angle == 90) {
-                const float tolerance = 2.0; 
-                int adc = pot_read_filtered(&potentiometer);
-                float current_angle = pot_to_angle(&potentiometer, adc);
-                if (fabs(localServerData.set_angle - current_angle) > tolerance) {
-                    err_code = motor_set_angle(localServerData.angle);
+                int err_code = motor_set_angle(target_angle);
+
+                xSemaphoreTake(valveMutex, portMAX_DELAY);
+
+                if (err_code == 0) {
+                    int adc = pot_read_filtered(&potentiometer);
+                    float updated_angle = pot_to_angle(&potentiometer, adc);
+                    valveData.angle = updated_angle;
+                    valveData.error_msg[0] = '\0';
+                } else {
+                    sprintf(valveData.error_msg,
+                            "Schedule failed to set angle to %d, err=%d",
+                            target_angle,
+                            err_code);
                 }
 
-                if (xSemaphoreTake(valveMutex, portMAX_DELAY) == pdTRUE) {
-                    if (err_code == 0) {
-                        valveData.angle = target_angle;
-                        valveData.error_msg[0] = '\0';
-                    }
-                    else {
-                        sprintf(valveData.error_msg,
-                                "Schedule control failed to set angle to %d, error code: %d",
-                                target_angle,
-                                err_code);
-                    }
-
-                    xSemaphoreGive(valveMutex);
-                }
-   
+                xSemaphoreGive(valveMutex);
 
                 valve_busy = false;
-                
             }
         }
 

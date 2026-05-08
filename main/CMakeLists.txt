@@ -3,6 +3,7 @@ idf_component_register(SRCS
                             "global_var.c"
                             "eeprom_fn/wifi_storage.c"
                             "eeprom_fn/schedule_storage.c"
+                            "eeprom_fn/encoder_storage.c"
                             "websocket_fn/websocket_server_fn.c"
                             "websocket_fn/websocket_state_fn.c"
                             "time_func.c"

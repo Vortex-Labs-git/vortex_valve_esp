@@ -8,6 +8,8 @@
 #include "websocket_state_fn.h"
 #include "time_func.h"
 #include "eeprom_fn/wifi_storage.h"
+#include "eeprom_fn/encoder_storage.h"
+#include "valve_fn/valve_process.h"
 
 
 /*---------------------------------------------------------------
@@ -131,6 +133,51 @@ void send_device_data(void) {
 }
 
 
+/*===============================================================
+ *                  SEND MOTOR CALIBRATION DATA (OFFLINE MODE)
+ *==============================================================*/
+void send_motorcalibration_data(void) {
+    if (esp_server == NULL) return;
+
+    /*----------------- Copy Shared Data Safely -----------------*/
+    GetData localCopy;
+    xSemaphoreTake(valveMutex, portMAX_DELAY);
+    localCopy = valveData;
+    xSemaphoreGive(valveMutex);
+
+    char timestamp[25];
+    get_current_timestamp(timestamp, sizeof(timestamp));
+
+
+    /*----------------- Create Root JSON -----------------*/
+    cJSON *json = cJSON_CreateObject();
+    cJSON_AddStringToObject(json, "event", "get_motor_calibration");
+    cJSON_AddStringToObject(json, "timestamp", timestamp);
+    cJSON_AddStringToObject(json, "device_id", DEVICE_ID);
+
+    // get_encoder object
+    cJSON *encoder_data = cJSON_CreateObject();
+    cJSON_AddNumberToObject(encoder_data, "value", localCopy.encoder_value);
+    cJSON_AddNumberToObject(encoder_data, "close_limit", localCopy.close_limit_encode);
+    cJSON_AddNumberToObject(encoder_data, "open_limit", localCopy.open_limit_encode);
+    cJSON_AddItemToObject(json, "encoder_data", encoder_data);
+
+    /* Convert to string */
+    char *json_string = cJSON_PrintUnformatted(json);
+    cJSON_Delete(json);
+
+    if (json_string == NULL) {
+        ESP_LOGE(TAG, "Failed to create JSON string");
+        return;
+    }
+
+    /* Send asynchronously via WebSocket */
+    if (httpd_queue_work(esp_server, websocket_async_send, json_string) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to queue websocket work");
+        free(json_string);
+    }
+}
+
 
 /*===============================================================
  *                OFFLINE EVENT HANDLER
@@ -243,6 +290,109 @@ void offline_data(cJSON *event, cJSON *json) {
 
         } else {
             ESP_LOGW(TAG, "\"wifi_data\" field is missing or not an object");
+        }
+    }
+    /*----------------- GET MOTOR CALIBRATION READINGS -----------------*/
+    else if ( strcmp(event->valuestring, "get_motor_calibration") == 0) {
+        ESP_LOGI(TAG, "Event matched: get_motor_calibration");
+
+        cJSON *device_id = cJSON_GetObjectItem(json, "device_id");
+        if (device_id != NULL && cJSON_IsString(device_id)) {
+            if (strcmp(device_id->valuestring, DEVICE_ID) == 0) {
+                ESP_LOGW(TAG, "User send the correct device ID %s", device_id->valuestring);
+                send_motorcalibration_data();
+                ESP_LOGW(TAG, "Send motor calibration data");
+            } else {
+                ESP_LOGW(TAG, "User dont send the correct device ID");
+            }
+        } else {
+            ESP_LOGW(TAG, "\"device_id\" is false or missing");
+        }
+    }
+    /*----------------- SET MOTOR CALIBRATION -----------------*/
+    else if ( strcmp(event->valuestring, "set_motor_calibration") == 0) {
+        ESP_LOGI(TAG, "Event matched: set_motor_calibration");
+
+        cJSON *device_id = cJSON_GetObjectItem(json, "device_id");
+        if (device_id != NULL && cJSON_IsString(device_id)) {
+            if (strcmp(device_id->valuestring, DEVICE_ID) == 0) {
+                ESP_LOGW(TAG, "User send the correct device ID %s", device_id->valuestring);
+
+                cJSON *encoder_data = cJSON_GetObjectItem(json, "encoder_data");
+                if (encoder_data != NULL && cJSON_IsObject(encoder_data)) {
+                    cJSON *close_limit = cJSON_GetObjectItem(encoder_data, "close_limit");
+                    cJSON *open_limit = cJSON_GetObjectItem(encoder_data, "open_limit");
+
+                    if (close_limit && cJSON_IsNumber(close_limit) &&
+                        open_limit && cJSON_IsNumber(open_limit)) {
+
+                        int close = close_limit->valueint;
+                        int open = open_limit->valueint;
+
+                        if (close < open && close > 0 && open > 0) {
+                            xSemaphoreTake(valveMutex, portMAX_DELAY);
+                            valveData.close_limit_encode = close;
+                            valveData.open_limit_encode = open;
+                            xSemaphoreGive(valveMutex);
+                            pot_update_calibration(&potentiometer);
+
+                            save_eeprom_calibration();
+                        } else {
+                            ESP_LOGW(TAG, "encoder_data values invalid.");
+                        }
+                    } else {
+                        ESP_LOGW(TAG, "encoder_data missing or not numbers.");
+                    }
+                } else {
+                    ESP_LOGW(TAG, "encoder_data false or missing.");
+                }
+            } else {
+                ESP_LOGW(TAG, "User dont send the correct device ID");
+            }
+        } else {
+            ESP_LOGW(TAG, "\"device_id\" is false or missing");
+        }
+
+    }
+    /*----------------- SET MOTOR ROTATION -----------------*/
+    else if ( strcmp(event->valuestring, "set_motor_rotation") == 0) {
+        ESP_LOGI(TAG, "Event matched: set_motor_rotation");
+
+        cJSON *device_id = cJSON_GetObjectItem(json, "device_id");
+        if (device_id != NULL && cJSON_IsString(device_id)) {
+            if (strcmp(device_id->valuestring, DEVICE_ID) == 0) {
+                ESP_LOGW(TAG, "User send the correct device ID %s", device_id->valuestring);
+                
+                cJSON *set_motor = cJSON_GetObjectItem(json, "set_motor");
+                if (set_motor != NULL && cJSON_IsObject(set_motor)) {
+                    cJSON *turn_clkwise = cJSON_GetObjectItem(set_motor, "turn_clkwise");
+                    cJSON *turn_anticlkwise = cJSON_GetObjectItem(set_motor, "turn_anticlkwise");
+
+                    bool clk = cJSON_IsTrue(turn_clkwise);
+                    bool aclk = cJSON_IsTrue(turn_anticlkwise);
+
+                    if (clk && !aclk) {
+                        motor_rotate_clk();
+                        send_motorcalibration_data();
+                        ESP_LOGW(TAG, "Send motor calibration data");
+                    } 
+                    else if (!clk && aclk) {
+                        motor_rotate_aclk();
+                        send_motorcalibration_data();
+                        ESP_LOGW(TAG, "Send motor calibration data");
+                    }
+                    else {
+                        ESP_LOGW(TAG, "Invalid motor command (both true/false or missing)");
+                    }
+
+                } else {
+                    ESP_LOGW(TAG, "set_motor data false or missing.");
+                }
+            } else {
+                ESP_LOGW(TAG, "User dont send the correct device ID");
+            }
+        } else {
+            ESP_LOGW(TAG, "\"device_id\" is false or missing");
         }
     }
     else {

@@ -14,6 +14,7 @@ typedef struct {
 
 
 void pot_sensor_init(PotSensor *sensor);
+void pot_update_calibration(PotSensor *sensor);
 int pot_sensor_read(PotSensor *sensor);
 int pot_read_filtered(PotSensor *sensor);
 float pot_to_angle(PotSensor *sensor, int adc);
