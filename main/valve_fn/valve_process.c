@@ -241,7 +241,7 @@ int motor_close(void) {
     if (errorCode == 0) {
         led_off(&redLED);
         ESP_LOGI(TAG, "motor is closed");
-        motor.state = 0;
+        motor.state = 10;
 
         xSemaphoreTake(valveMutex, portMAX_DELAY);
         valveData.is_open = false;
