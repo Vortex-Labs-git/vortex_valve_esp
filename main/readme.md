@@ -237,7 +237,7 @@ schedule_storage_save(schedule_copy, MAX_SCHEDULES);
 
 ## 🌐 Global Shared Data
 
-Defined in `global_var.c`
+Defined in `global_fn/global_var.c`
 
 ---
 

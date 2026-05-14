@@ -13,7 +13,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "esp_log.h"
-#include "global_var.h"
+#include "global_fn/global_var.h"
 
 #include "schedule_storage.h" 
 

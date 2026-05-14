@@ -6,7 +6,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 
-#include "global_var.h"
+#include "global_fn/global_var.h"
 #include "led_indicators.h"
 #include "valve_motor.h"
 #include "limit_switch.h"

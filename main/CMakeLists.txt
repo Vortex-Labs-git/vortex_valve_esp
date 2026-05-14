@@ -1,12 +1,12 @@
 idf_component_register(SRCS 
                             "main.c"
-                            "global_var.c"
+                            "global_fn/global_var.c"
                             "eeprom_fn/wifi_storage.c"
                             "eeprom_fn/schedule_storage.c"
                             "eeprom_fn/encoder_storage.c"
                             "websocket_fn/websocket_server_fn.c"
                             "websocket_fn/websocket_state_fn.c"
-                            "time_func.c"
+                            "time_fn/time_func.c"
                             "mqtt_fn/mqtt_client_fn.c"
                             "mqtt_fn/mqtt_state_fn.c"
                             "valve_fn/led_indicators.c"
@@ -14,8 +14,8 @@ idf_component_register(SRCS
                             "valve_fn/limit_switch.c"
                             "valve_fn/pot_read.c"
                             "valve_fn/valve_process.c"
-                            "main_process.c"
-                            "test_process.c"
+                            "main_fn/main_process.c"
+                            "test_fn/test_process.c"
                         INCLUDE_DIRS 
                             "."
                         EMBED_TXTFILES

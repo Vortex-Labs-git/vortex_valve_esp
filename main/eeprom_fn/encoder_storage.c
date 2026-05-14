@@ -9,7 +9,7 @@
 #include "esp_log.h"
 
 #include "encoder_storage.h"
-#include "global_var.h" 
+#include "global_fn/global_var.h" 
 
 /* ===================== NVS CONFIG ===================== */
 

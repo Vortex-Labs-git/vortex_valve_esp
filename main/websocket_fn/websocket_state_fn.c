@@ -4,9 +4,9 @@
 #include "cJSON.h"
 #include "sdkconfig.h" 
 
-#include "global_var.h"
+#include "global_fn/global_var.h"
 #include "websocket_state_fn.h"
-#include "time_func.h"
+#include "time_fn/time_func.h"
 #include "eeprom_fn/wifi_storage.h"
 #include "eeprom_fn/encoder_storage.h"
 #include "valve_fn/valve_process.h"

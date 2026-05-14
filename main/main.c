@@ -37,16 +37,16 @@
 #include "lwip/err.h"
 #include "lwip/sys.h"
 
-#include "global_var.h"
+#include "global_fn/global_var.h"
 #include "eeprom_fn/wifi_storage.h"
 #include "eeprom_fn/schedule_storage.h"
 #include "eeprom_fn/encoder_storage.h"
-#include "time_func.h"
+#include "time_fn/time_func.h"
 #include "websocket_fn/websocket_server_fn.h"
 #include "mqtt_fn/mqtt_client_fn.h"
 #include "valve_fn/valve_process.h"
-#include "main_process.h"
-#include "test_process.h"
+#include "main_fn/main_process.h"
+#include "test_fn/test_process.h"
 
 
 

@@ -7,7 +7,7 @@
 #include "pot_read.h"
 #include "esp_log.h"
 
-#include "global_var.h" 
+#include "global_fn/global_var.h" 
 
 
 
