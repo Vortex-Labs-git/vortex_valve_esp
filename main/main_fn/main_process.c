@@ -232,7 +232,7 @@ void valve_sync_process(void *pvParameters)
                     current_minutes < close_minutes) {
 
                     should_open = true;
-                    break;  // 🚀 IMPORTANT: stop checking further
+                    break;  // IMPORTANT: stop checking further
                 }
             }
 

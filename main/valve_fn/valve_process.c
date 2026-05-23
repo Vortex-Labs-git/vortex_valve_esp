@@ -151,6 +151,14 @@ int motor_set_angle(int target_angle)
         int adc = pot_read_filtered(&potentiometer);
         float current_angle = pot_to_angle(&potentiometer, adc);
 
+        // Stop condition
+        if (fabs(target_angle - current_angle) <= tolerance) {
+            motor_stop(&motor);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            ESP_LOGI(TAG, "Target reached");
+            break;
+        }
+
         float control = pid_compute(&pidValue, target_angle, current_angle);
 
         int duty = (int)fabs(control);
@@ -183,15 +191,6 @@ int motor_set_angle(int target_angle)
         else {
             ESP_LOGI(TAG, "Direction: CLOSE (CLK)");
             motor_run_clk(&motor, duty);    // CLOSE
-        }
-
-
-        // Stop condition
-        if (fabs(target_angle - current_angle) <= tolerance) {
-            motor_stop(&motor);
-            vTaskDelay(pdMS_TO_TICKS(100));
-            ESP_LOGI(TAG, "Target reached");
-            break;
         }
 
         // Timeout safety

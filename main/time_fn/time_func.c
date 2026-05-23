@@ -161,7 +161,7 @@ void obtain_time(void *pvParameters)
         tzset();
 
         ESP_LOGI(TAG_TIME, "NTP Time synchronized successfully");
-        ESP_LOGI(TAG_TIME, "Current time: %04d-%02d-%02d %02d:%02d:%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        ESP_LOGI(TAG_TIME, "Current ntp time: %04d-%02d-%02d %02d:%02d:%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 
         // Update RTC after NTP sync
         update_rtc_after_ntp();
@@ -183,7 +183,7 @@ void Real_time_read(void *pvParameters){
 
         char timestamp[32];
         get_current_timestamp(timestamp, sizeof(timestamp));
-        ESP_LOGI(TAG_TIME, "Obtain Current Time : %s", timestamp);
+        ESP_LOGI(TAG_TIME, "Obtain Current Time loop: %s", timestamp);
 
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
