@@ -9,6 +9,10 @@ esp_err_t schedule_storage_load(ScheduleInfo *scheList,
 esp_err_t schedule_storage_save(ScheduleInfo *scheList,
                                 size_t listSize);
 
+esp_err_t schedule_set_enable_save(bool enable);
+
+esp_err_t schedule_set_enable_load(bool *enable);
+
 void load_eeprom_schedule();
 
 

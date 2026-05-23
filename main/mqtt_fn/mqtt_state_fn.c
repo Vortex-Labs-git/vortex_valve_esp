@@ -7,6 +7,7 @@
 #include "time_fn/time_func.h"
 #include "global_fn/global_var.h"
 #include "mqtt_state_fn.h"
+#include "eeprom_fn/schedule_storage.h"
 
 
 /*---------------------------------------------------------------
@@ -79,8 +80,23 @@ void mqtt_handle_cmd_data(const char *data) {
     /*----------------- Update Shared Data Safely -----------------*/
     // Protect shared serverData using mutex
     xSemaphoreTake(serverMutex, portMAX_DELAY);
+
+    bool old_schedule_state = serverData.schedule_control;
+    bool new_schedule_state = localCopy.schedule_control;
+
+    // Update runtime state FIRST
     serverData = localCopy;
+
     xSemaphoreGive(serverMutex);
+
+    /*----------------- Persist OUTSIDE mutex (IMPORTANT) -----------------*/
+    if (old_schedule_state != new_schedule_state) {
+        esp_err_t err = schedule_set_enable_save(new_schedule_state);
+
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to save schedule enable state to NVS");
+        }
+    }
 
     cJSON_Delete(json_cmd_data);
 }

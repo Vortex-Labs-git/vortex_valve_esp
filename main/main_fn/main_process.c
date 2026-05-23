@@ -196,6 +196,14 @@ void valve_sync_process(void *pvParameters)
             struct tm timeinfo;
             time(&now);
             localtime_r(&now, &timeinfo);
+            ESP_LOGI(TAG_SCHEDULE,
+                "System time inside of process: %04d-%02d-%02d %02d:%02d:%02d",
+                timeinfo.tm_year + 1900,
+                timeinfo.tm_mon + 1,
+                timeinfo.tm_mday,
+                timeinfo.tm_hour,
+                timeinfo.tm_min,
+                timeinfo.tm_sec);
 
             const char *week_days[7] = {"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"};
             const char *today_str = week_days[timeinfo.tm_wday];

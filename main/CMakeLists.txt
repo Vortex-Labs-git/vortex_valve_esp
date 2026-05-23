@@ -27,5 +27,6 @@ idf_component_register(SRCS
                             json 
                             esp_http_server 
                             esp_event
+                            i2cdev
                             driver
                             )

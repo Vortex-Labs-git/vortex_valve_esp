@@ -31,6 +31,8 @@
  */
 #define SCHEDULE_NVS_KEY          "schedule"
 
+#define ENABLE_NVS_KEY         "set_schedule"
+
 /**
  * @brief Logging tag
  */
@@ -203,6 +205,14 @@ esp_err_t schedule_storage_load(ScheduleInfo *scheList,
  */
 void load_eeprom_schedule(){
 
+    bool enabled = false;
+    schedule_set_enable_load(&enabled);
+
+    xSemaphoreTake(serverMutex, portMAX_DELAY);
+    serverData.schedule_control = enabled;
+    xSemaphoreGive(serverMutex);
+    ESP_LOGI(TAG_SCHEDULE, "Loaded schedule enable state: %s", enabled ? "true" : "false");
+
     /**
      * Step 1: Clear temporary buffer
      */
@@ -250,4 +260,48 @@ schedule_storage_load(loaded, 7, &loaded_count);
 */
 
 
-// generate full.md file that able to copy and pase from sigle process. also i this document needs to be very detailed. becasue a new begiined also should understand this process and functinos. and later im plane to traing a custom ai for this for helping perpose
+/* ======================================================================== */
+/* ============================ SAVE SCHEDULE ENABLE ====================== */
+/* ======================================================================== */
+esp_err_t schedule_set_enable_save(bool enable)
+{
+    nvs_handle_t handle;
+    esp_err_t err;
+
+    err = nvs_open(SCHEDULE_NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return err;
+
+    err = nvs_set_u8(handle, ENABLE_NVS_KEY, (uint8_t)enable);
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        return err;
+    }
+
+    err = nvs_commit(handle);
+    nvs_close(handle);
+
+    return err;
+}
+
+
+/* ======================================================================== */
+/* ============================ LOAD SCHEDULE ENABLE ====================== */
+/* ======================================================================== */
+esp_err_t schedule_set_enable_load(bool *enable)
+{
+    nvs_handle_t handle;
+    esp_err_t err;
+    uint8_t value = 0;
+
+    err = nvs_open(SCHEDULE_NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err != ESP_OK) return err;
+
+    err = nvs_get_u8(handle, ENABLE_NVS_KEY, &value);
+    nvs_close(handle);
+
+    if (err == ESP_OK && enable) {
+        *enable = (bool)value;
+    }
+
+    return err;
+}

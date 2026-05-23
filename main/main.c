@@ -186,6 +186,9 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         ESP_LOGI(TAG_STA, "Router connected. Switching to STA Mode (Turning AP OFF)...");
         esp_wifi_set_mode(WIFI_MODE_STA);
 
+        /*Sync time*/
+        xTaskCreate(obtain_time, "sntp_task", 4096, NULL, 5, NULL);
+
         /* Stop Webserver if running */
         if (web_running) {
             stop_webserver();
@@ -463,7 +466,7 @@ void app_main(void)
     load_eeprom_schedule();
     load_eeprom_calibration();
 
-
+    time_module_init();
     init_valve_system();
     // start_limit_test();
     // start_pot_test();
@@ -473,8 +476,6 @@ void app_main(void)
 
 
     wifi_init_smart_mode();
-
-    xTaskCreate(obtain_time, "obtain_time", 4096, NULL, 5, NULL);
 
     xTaskCreate(schedule_save_task, "schedule_save_task", 4096, NULL, 5, NULL);
 

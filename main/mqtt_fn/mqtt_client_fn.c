@@ -74,7 +74,7 @@ static void mqtt_publish_message(const char *sub_topic, cJSON *message)
     snprintf(full_topic, sizeof(full_topic), "%s/%s", BASE_TOPIC, sub_topic);
 
     // ESP_LOGI(TAG, "Publishing to %s", full_topic);
-    ESP_LOGI(TAG, "Payload: %s", json_str);
+    ESP_LOGI(TAG, "Publish Payload: %s", json_str);
 
     int msg_id = esp_mqtt_client_publish( mqtt_client, full_topic, json_str, 0, 0, 0 );
 
