@@ -372,11 +372,17 @@ void offline_data(cJSON *event, cJSON *json) {
                     bool aclk = cJSON_IsTrue(turn_anticlkwise);
 
                     if (clk && !aclk) {
+                        xSemaphoreTake(serverMutex, portMAX_DELAY);
+                        serverData.set_angle = false;
+                        xSemaphoreGive(serverMutex);
                         motor_rotate_clk();
                         send_motorcalibration_data();
                         ESP_LOGW(TAG, "Send motor calibration data");
                     } 
                     else if (!clk && aclk) {
+                        xSemaphoreTake(serverMutex, portMAX_DELAY);
+                        serverData.set_angle = false;
+                        xSemaphoreGive(serverMutex);
                         motor_rotate_aclk();
                         send_motorcalibration_data();
                         ESP_LOGW(TAG, "Send motor calibration data");
