@@ -24,11 +24,33 @@
 #define RED_LED_PIN         CONFIG_RED_LED_PIN
 #define GREEN_LED_PIN       CONFIG_GREEN_LED_PIN
 
-/* =================== CALIBRATION =================== */
-// #define ADC_CLOSE   1500   // 0°
-// #define ADC_OPEN    2500    // 90°
-// #define ADC_MIN_VALID   ADC_CLOSE - 100
-// #define ADC_MAX_VALID   ADC_OPEN + 100
+
+/* =================== MOTION TUNING (bench-tune these) =================== */
+/*
+ * This actuator cannot do fine proportional taper: below ~200 duty it will
+ * not break static friction, and the usable band is narrow (200-220). So this
+ * is intentionally bang-bang control with a brief friction-breaking "kick",
+ * NOT a PID.
+ */
+#define DUTY_RUN            210     /* steady drive, mid of the 200-220 band   */
+#define DUTY_KICK           220     /* higher kick to break static friction    */
+#define KICK_MS             120     /* TUNE: how long the valve needs to start
+                                       moving from cold. Too short re-introduces
+                                       false stall trips during friction-break. */
+ 
+#define ANGLE_TOLERANCE     2.0f    /* degrees: close enough to target         */
+#define MOVE_TIMEOUT_MS     10000   /* hard safety net                         */
+ 
+/* Stall detection (operates in RAW ADC counts to sidestep the
+ * non-linear ADC->angle mapping). */
+#define ADC_PROGRESS_MIN    8       /* TUNE: min ADC change that counts as
+                                       "moving". Set just above pot noise floor */
+#define STALL_TIMEOUT_MS    1500    /* driven this long with no progress = stuck */
+#define END_BAND            60      /* TUNE: ADC window around a calibrated
+                                       end-stop that is treated as "at the end" */
+ 
+
+
 
 /* =================== HARDWARE OBJECTS =================== */
 Motor motor = { MOTOR_IN1_PIN, MOTOR_IN2_PIN, MOTOR_EN_PIN, 0 };
@@ -38,44 +60,12 @@ LedIndicator greenLED = { GREEN_LED_PIN };
 
 
 static const char *TAG = "VALVE_PROCESS";
-typedef struct {
-    float kp;
-    float ki;
-    float kd;
-
-    float prev_error;
-    float integral;
-} PIDController;
-
-PIDController pidValue = {
-        .kp = 4.0,
-        .ki = 0.01,
-        .kd = 0.4,
-        .prev_error = 0,
-        .integral = 0
-    };
-
-
-
-float pid_compute(PIDController *pid, float setpoint, float measured)
-{
-    float error = setpoint - measured;
-
-    pid->integral += error;
-
-    // Anti-windup
-    if (pid->integral > 1000) pid->integral = 1000;
-    if (pid->integral < -1000) pid->integral = -1000;
-
-    float derivative = error - pid->prev_error;
-
-    float output = (pid->kp * error) + (pid->ki * pid->integral) + (pid->kd * derivative);
-
-    pid->prev_error = error;
-
-    return output;
+ 
+ 
+/* small helper for elapsed milliseconds */
+static inline unsigned long millis(void) {
+    return (unsigned long)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 }
-
 
 
 
@@ -94,9 +84,10 @@ void init_valve_system(void) {
     led_off(&redLED);
     led_off(&greenLED);
 
-    xSemaphoreTake(valveMutex, portMAX_DELAY);
     int adc = pot_read_filtered(&potentiometer);
     float current_angle = pot_to_angle(&potentiometer, adc);
+
+    xSemaphoreTake(valveMutex, portMAX_DELAY);
     valveData.encoder_value = adc;
     valveData.angle = current_angle;
     xSemaphoreGive(valveMutex);
@@ -106,9 +97,10 @@ void init_valve_system(void) {
 
 void pot_read_update(void)
 {
-    xSemaphoreTake(valveMutex, portMAX_DELAY);
     int adc = pot_read_filtered(&potentiometer);
     float current_angle = pot_to_angle(&potentiometer, adc);
+
+    xSemaphoreTake(valveMutex, portMAX_DELAY);
     valveData.encoder_value = adc;
     valveData.angle = current_angle;
     xSemaphoreGive(valveMutex);
@@ -130,82 +122,140 @@ void motor_rotate_aclk(void)
     vTaskDelay(pdMS_TO_TICKS(100));
     motor_stop(&motor);
     vTaskDelay(pdMS_TO_TICKS(50));
-    ESP_LOGI(TAG, "Motor rotate bit clockwise ");
+    ESP_LOGI(TAG, "Motor rotate bit anticlockwise ");
     pot_read_update();
 }
 
 
-int motor_set_angle(int target_angle)
-{   
-    pidValue.integral = 0;
-    pidValue.prev_error = 0;
 
-    const float tolerance = 2.0;     // degrees
-    const int timeout_ms = 10000;
-    unsigned long start = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
+
+/*
+ * Move the valve to target_angle.
+ *
+ * Control model: bang-bang with a friction-breaking kick.
+ *   Phase 1 (0 .. KICK_MS): drive at DUTY_KICK. Movement is NOT expected yet,
+ *                           so stall detection is suspended here.
+ *   Phase 2 (after KICK_MS): drive at DUTY_RUN. A healthy valve is moving now,
+ *                            so "max effort + no ADC change" => genuine stall.
+ *
+ * Return codes:
+ *    0  success (reached tolerance band)
+ *   -1  hard timeout
+ *   -2  invalid feedback (bad calibration / dead pot)
+ *   -3  stall mid-travel (jam or sensor fault)
+ *   -4  reached a mechanical end-stop before the target
+ *       (normally means calibration drifted so the target is unreachable;
+ *        a correctly calibrated valve exits via the tolerance band first)
+ */
+int motor_set_angle( int target_angle) {
+    
+    const unsigned long start = millis();
+ 
     ESP_LOGI(TAG, "Moving to angle: %d", target_angle);
+ 
+    int last_adc = pot_read_filtered(&potentiometer);
+    unsigned long last_progress_ms = start;
 
-    while (1)
-    {
+
+    while (1) {
         int adc = pot_read_filtered(&potentiometer);
         float current_angle = pot_to_angle(&potentiometer, adc);
+        unsigned long now_ms  = millis();
+        unsigned long elapsed = now_ms - start;
 
-        // Stop condition
-        if (fabs(target_angle - current_angle) <= tolerance) {
+        if (current_angle < 0.0f) {
+            motor_stop(&motor);
+            led_on(&redLED);
+            ESP_LOGE(TAG, "Invalid angle reading (calibration?). Aborting move.");
+
+            xSemaphoreTake(valveMutex, portMAX_DELAY);
+            snprintf(valveData.error_msg, sizeof(valveData.error_msg),"Invalid feedback (calib?)");
+            xSemaphoreGive(valveMutex);
+
+            return -2;
+        }
+
+        float error = target_angle - current_angle;
+
+        /* ---- Reached target ---- */
+        if (fabs(error) <= ANGLE_TOLERANCE) {
             motor_stop(&motor);
             vTaskDelay(pdMS_TO_TICKS(100));
-            ESP_LOGI(TAG, "Target reached");
+            ESP_LOGI(TAG, "Target reached (angle=%.2f)", current_angle);
             break;
         }
 
-        float control = pid_compute(&pidValue, target_angle, current_angle);
 
-        int duty = (int)fabs(control);
+        /* ---- Drive ---- */
+        bool in_kick_phase = (elapsed < KICK_MS);
+        int  duty = in_kick_phase ? DUTY_KICK : DUTY_RUN;
+ 
+        if (error > 0) motor_run_aclck(&motor, duty);   /* OPEN  (raise angle) */
+        else           motor_run_clk(&motor, duty);     /* CLOSE (lower angle) */
+ 
+        ESP_LOGI(TAG, "[MOVE] tgt:%d cur:%.2f err:%.2f duty:%d adc:%d %s",
+                 target_angle, current_angle, error, duty, adc,
+                 in_kick_phase ? "(kick)" : "");
 
-        // Limit PWM
-        if (duty > 220) duty = 220;
 
-        // Minimum power to overcome friction
-        if (duty < 200) duty = 200;
 
-        ESP_LOGI(TAG,
-            "[PID] Target:%d | Current:%.2f | OUT:%.2f | PWM:%d | ADC:%d",
-            target_angle,
-            current_angle,
-            control,
-            duty,
-            adc
-        );
-
-        // // Deadband (prevent jitter)
-        // if (fabs(control) < 5) {
-        //     ESP_LOGI(TAG, "Deadband reached → motor stop");
-        //     motor_stop(&motor);
-        // }
-        // else 
-        if (control > 0) {
-            ESP_LOGI(TAG, "Direction: OPEN (ACLK)");
-            motor_run_aclck(&motor, duty);  // OPEN
+        /* ---- Stall detection: only AFTER the friction-break window ---- */
+        if (in_kick_phase) {
+            /* Movement not expected yet; keep the progress clock fresh
+               so the friction-break window never counts as a stall. */
+            last_adc = adc;
+            last_progress_ms = now_ms;
+        } else {
+            if (abs(adc - last_adc) >= ADC_PROGRESS_MIN) {
+                /* We moved — reset the stall clock. */
+                last_adc = adc;
+                last_progress_ms = now_ms;
+            } else if (now_ms - last_progress_ms > STALL_TIMEOUT_MS) {
+                /* Max effort applied past the friction window, still no ADC
+                   change. Distinguish "hit a mechanical end" from "jammed
+                   mid-travel" by WHERE it stopped, not THAT it stopped. */
+                motor_stop(&motor);
+ 
+                bool near_end =
+                    (abs(adc - potentiometer.adc_open)  < END_BAND) ||
+                    (abs(adc - potentiometer.adc_close) < END_BAND);
+ 
+                if (near_end) {
+                    led_off(&redLED);
+                    ESP_LOGW(TAG, "End-stop reached (adc=%d) before target %d",
+                             adc, target_angle);
+                    xSemaphoreTake(valveMutex, portMAX_DELAY);
+                    snprintf(valveData.error_msg, sizeof(valveData.error_msg),
+                             "End-stop before target %d", target_angle);
+                    xSemaphoreGive(valveMutex);
+                    return -4;
+                } else {
+                    led_on(&redLED);
+                    ESP_LOGE(TAG, "Stall mid-travel (adc=%d) - jam or sensor fault",
+                             adc);
+                    xSemaphoreTake(valveMutex, portMAX_DELAY);
+                    snprintf(valveData.error_msg, sizeof(valveData.error_msg),
+                             "Valve stalled mid-travel");
+                    xSemaphoreGive(valveMutex);
+                    return -3;
+                }
+            }
         }
-        else {
-            ESP_LOGI(TAG, "Direction: CLOSE (CLK)");
-            motor_run_clk(&motor, duty);    // CLOSE
-        }
 
-        // Timeout safety
-        if ((xTaskGetTickCount() * portTICK_PERIOD_MS) - start > timeout_ms) {
+
+        /* ---- Hard timeout safety net ---- */
+        if (elapsed > MOVE_TIMEOUT_MS) {
             motor_stop(&motor);
             led_on(&redLED);
-
-            ESP_LOGE(TAG, "Timeout error");
-
+            ESP_LOGE(TAG, "Move timeout");
+ 
             xSemaphoreTake(valveMutex, portMAX_DELAY);
-            sprintf(valveData.error_msg, "PID timeout");
+            snprintf(valveData.error_msg, sizeof(valveData.error_msg), "Move timeout");
             xSemaphoreGive(valveMutex);
-
             return -1;
         }
+
 
         vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -214,6 +264,8 @@ int motor_set_angle(int target_angle)
 
     return 0;
 }
+
+
 
 
 int valve_test(void)

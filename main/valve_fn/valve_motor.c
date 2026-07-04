@@ -24,12 +24,19 @@ typedef struct {
 
 static MotorTaskParam motorParam;
 static TaskHandle_t motorTaskHandle = NULL;
+static portMUX_TYPE motorMux = portMUX_INITIALIZER_UNLOCKED;
 
 static void motor_task(void *arg) {
-    Motor *motor = motorParam.motor;
+    Motor *motor = motorParam.motor; 
 
     while (1) {
-        switch (motorParam.direction) {
+        int dir, duty;
+        taskENTER_CRITICAL(&motorMux);
+        dir  = motorParam.direction;
+        duty = motorParam.dutyCycle;
+        taskEXIT_CRITICAL(&motorMux);
+
+        switch (dir) {
             case 1: // clockwise
                 gpio_set_level(motor->motorIN1_PIN, 1);
                 gpio_set_level(motor->motorIN2_PIN, 0);
@@ -91,16 +98,22 @@ void motor_init(Motor *motor) {
 }
 
 void motor_run_clk(Motor *motor, int dutyCycle) {
+    taskENTER_CRITICAL(&motorMux);
     motorParam.direction = 1;
     motorParam.dutyCycle = dutyCycle;
+    taskEXIT_CRITICAL(&motorMux);
 }
 
 void motor_run_aclck(Motor *motor, int dutyCycle) {
+    taskENTER_CRITICAL(&motorMux);
     motorParam.direction = -1;
     motorParam.dutyCycle = dutyCycle;
+    taskEXIT_CRITICAL(&motorMux);
 }
 
 void motor_stop(Motor *motor) {
+    taskENTER_CRITICAL(&motorMux);
     motorParam.direction = 0;
     motorParam.dutyCycle = 0;
+    taskEXIT_CRITICAL(&motorMux);
 }

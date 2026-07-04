@@ -5,13 +5,13 @@ menu "WiFi Mode Configuration"
 
         config ESP_WIFI_AP_SSID
             string "WiFi AP SSID"
-            default "myssid"
+            default "VA200001001"
             help
                 SSID (network name) of the AP for the example to connect to.
 
         config ESP_WIFI_AP_PASSWORD
             string "WiFi AP Password"
-            default "mypassword"
+            default "12345678"
             help
                 WiFi password of the AP for the example to use.
 
