@@ -156,30 +156,23 @@ void valve_sync_process(void *pvParameters)
                 /* 4. UPDATE VALVE STATUS AND ERROR MESSAGE             */
                 /* ===================================================== */
 
+                adc = pot_read_filtered(&potentiometer);
+                current_angle = pot_to_angle(&potentiometer, adc);
                 xSemaphoreTake(valveMutex, portMAX_DELAY);
-
                 if (err_code == 0) {
-
                     /**
                      * Successful movement
                      */
-                    int adc = pot_read_filtered(&potentiometer);
-                    float current_angle = pot_to_angle(&potentiometer, adc);
                     valveData.encoder_value = adc;
                     valveData.angle = current_angle;
                     valveData.error_msg[0] = '\0';   // Clear error message
                 }
                 else {
-
                     /**
                      * Movement failed — store error message
                      */
-                    sprintf(valveData.error_msg,
-                            "Failed to set angle to %d, error code: %d",
-                            localServerData.angle,
-                            err_code);
+                    sprintf(valveData.error_msg, "Failed to set angle to %d, error code: %d", localServerData.angle, err_code);
                 }
-
                 xSemaphoreGive(valveMutex);
 
                 valve_busy = false;
@@ -249,11 +242,10 @@ void valve_sync_process(void *pvParameters)
 
                 int err_code = motor_set_angle(target_angle);
 
+                int adc = pot_read_filtered(&potentiometer);
+                float updated_angle = pot_to_angle(&potentiometer, adc);
                 xSemaphoreTake(valveMutex, portMAX_DELAY);
-
                 if (err_code == 0) {
-                    int adc = pot_read_filtered(&potentiometer);
-                    float updated_angle = pot_to_angle(&potentiometer, adc);
                     valveData.angle = updated_angle;
                     valveData.error_msg[0] = '\0';
                 } else {
@@ -262,7 +254,6 @@ void valve_sync_process(void *pvParameters)
                             target_angle,
                             err_code);
                 }
-
                 xSemaphoreGive(valveMutex);
 
                 valve_busy = false;

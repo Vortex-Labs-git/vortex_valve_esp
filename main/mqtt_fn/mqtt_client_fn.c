@@ -167,7 +167,7 @@ void mqtt_publish_valve_data_task(void *pvParameters) {
  */
 static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
 {
-    char topic[128];
+    static char topic[128];
     static char *rx_data = NULL;
     static int rx_data_len = 0;
     static int rx_bytes_received = 0;
