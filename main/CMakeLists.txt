@@ -1,6 +1,7 @@
 idf_component_register(SRCS 
                             "main.c"
                             "global_fn/global_var.c"
+                            "ota_fn/ota_update_fn.c"
                             "eeprom_fn/wifi_storage.c"
                             "eeprom_fn/schedule_storage.c"
                             "eeprom_fn/encoder_storage.c"
@@ -20,12 +21,16 @@ idf_component_register(SRCS
                             "."
                         EMBED_TXTFILES
                             "mqtt_fn/ca_cert.pem"
+                            "ota_fn/ota_ca_cert.pem"
                         REQUIRES 
                             esp_wifi 
                             mqtt 
                             nvs_flash 
                             json 
                             esp_http_server 
+                            esp_https_ota
+                            app_update
+                            esp_http_client
                             esp_event
                             i2cdev
                             driver

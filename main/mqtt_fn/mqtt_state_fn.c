@@ -6,6 +6,7 @@
 
 #include "time_fn/time_func.h"
 #include "global_fn/global_var.h"
+#include "ota_fn/ota_update_fn.h"
 #include "mqtt_state_fn.h"
 #include "eeprom_fn/schedule_storage.h"
 
@@ -49,7 +50,6 @@ void mqtt_handle_cmd_data(const char *data) {
     // Extract top-level fields
     cJSON *event = cJSON_GetObjectItem(json_cmd_data, "event");
     cJSON *device_id = cJSON_GetObjectItem(json_cmd_data, "device_id");
-    cJSON *ota_update = cJSON_GetObjectItem(json_cmd_data, "ota_update");
 
     /*----------------- Controller Settings -----------------*/
     cJSON *set_controller = cJSON_GetObjectItem(json_cmd_data, "set_controller");
@@ -75,6 +75,18 @@ void mqtt_handle_cmd_data(const char *data) {
             localCopy.angle = angle->valueint;
         }
 
+    }
+
+    /*----------------- OTA Update Request -----------------*/
+    cJSON *ota_update = cJSON_GetObjectItem(json_cmd_data, "ota_update");
+    if (cJSON_IsObject(ota_update)) {
+        cJSON *url = cJSON_GetObjectItem(ota_update, "url");
+        cJSON *version = cJSON_GetObjectItem(ota_update, "version");
+
+        if (cJSON_IsString(url) && cJSON_IsString(version)) {
+            ESP_LOGI(TAG, "OTA request: v%s from %s", version->valuestring, url->valuestring);
+            ota_start(url->valuestring, version->valuestring);
+        }
     }
 
     /*----------------- Update Shared Data Safely -----------------*/
