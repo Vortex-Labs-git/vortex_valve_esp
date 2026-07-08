@@ -36,6 +36,7 @@ typedef struct {
 } SetControl;
 
 
+
 // Define the structure for get_wifi
 typedef struct {
     char ssid[32];
