@@ -99,10 +99,15 @@ void pot_read_update(void)
 {
     int adc = pot_read_filtered(&potentiometer);
     float current_angle = pot_to_angle(&potentiometer, adc);
+    
+    bool open_now  = (current_angle >= 88);
+    bool close_now = (current_angle <= 2);
 
     xSemaphoreTake(valveMutex, portMAX_DELAY);
     valveData.encoder_value = adc;
     valveData.angle = current_angle;
+    valveData.is_open = open_now;
+    valveData.is_close = close_now;
     xSemaphoreGive(valveMutex);
 }
 
@@ -161,6 +166,17 @@ int motor_set_angle( int target_angle) {
     while (1) {
         int adc = pot_read_filtered(&potentiometer);
         float current_angle = pot_to_angle(&potentiometer, adc);
+
+        bool open_now  = (current_angle >= 88);
+        bool close_now = (current_angle <= 2);
+
+        xSemaphoreTake(valveMutex, portMAX_DELAY);
+        valveData.encoder_value = adc;
+        valveData.angle = current_angle;
+        valveData.is_open = open_now;
+        valveData.is_close = close_now;
+        xSemaphoreGive(valveMutex);
+
         unsigned long now_ms  = millis();
         unsigned long elapsed = now_ms - start;
 
@@ -194,9 +210,7 @@ int motor_set_angle( int target_angle) {
         if (error > 0) motor_run_aclck(&motor, duty);   /* OPEN  (raise angle) */
         else           motor_run_clk(&motor, duty);     /* CLOSE (lower angle) */
  
-        ESP_LOGI(TAG, "[MOVE] tgt:%d cur:%.2f err:%.2f duty:%d adc:%d %s",
-                 target_angle, current_angle, error, duty, adc,
-                 in_kick_phase ? "(kick)" : "");
+        ESP_LOGI(TAG, "[MOVE] tgt:%d cur:%.2f err:%.2f duty:%d adc:%d %s", target_angle, current_angle, error, duty, adc, in_kick_phase ? "(kick)" : "");
 
 
 
@@ -223,20 +237,16 @@ int motor_set_angle( int target_angle) {
  
                 if (near_end) {
                     led_off(&redLED);
-                    ESP_LOGW(TAG, "End-stop reached (adc=%d) before target %d",
-                             adc, target_angle);
+                    ESP_LOGW(TAG, "End-stop reached (adc=%d) before target %d", adc, target_angle);
                     xSemaphoreTake(valveMutex, portMAX_DELAY);
-                    snprintf(valveData.error_msg, sizeof(valveData.error_msg),
-                             "End-stop before target %d", target_angle);
+                    snprintf(valveData.error_msg, sizeof(valveData.error_msg), "End-stop before target %d", target_angle);
                     xSemaphoreGive(valveMutex);
                     return -4;
                 } else {
                     led_on(&redLED);
-                    ESP_LOGE(TAG, "Stall mid-travel (adc=%d) - jam or sensor fault",
-                             adc);
+                    ESP_LOGE(TAG, "Stall mid-travel (adc=%d) - jam or sensor fault", adc);
                     xSemaphoreTake(valveMutex, portMAX_DELAY);
-                    snprintf(valveData.error_msg, sizeof(valveData.error_msg),
-                             "Valve stalled mid-travel");
+                    snprintf(valveData.error_msg, sizeof(valveData.error_msg), "Valve stalled mid-travel");
                     xSemaphoreGive(valveMutex);
                     return -3;
                 }
