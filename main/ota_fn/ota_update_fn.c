@@ -11,6 +11,10 @@
 
 static const char *TAG = "OTA_UPDATE";
 
+/**
+ * @brief Root CA for the firmware download server
+ *
+ */
 extern const uint8_t _binary_ota_ca_cert_pem_start[];
 
 typedef struct {
@@ -20,10 +24,18 @@ typedef struct {
 
 static bool ota_running = false;
 
+
+/*===============================================================
+ *                  OTA STATE QUERY
+ *==============================================================*/
 bool ota_in_progress(void) {
     return ota_running;
 }
 
+
+/*===============================================================
+ *                  VERSION COMPARISON
+ *==============================================================*/
 static int fw_version_compare(const char *a, const char *b) {
     int a_parts[3] = {0}, b_parts[3] = {0};
 
@@ -38,6 +50,30 @@ static int fw_version_compare(const char *a, const char *b) {
     return 0;
 }
 
+
+/*===============================================================
+ *                  OTA TASK (FreeRTOS)
+ *==============================================================*/
+/**
+ * @brief Background task that performs the full OTA update
+ *
+ * Runs in parallel with normal operation — the valve control,
+ * MQTT publishing, and scheduling all keep working during the
+ * download. The new image is written to the INACTIVE partition,
+ * so the running firmware is never touched.
+ *
+ * Safety gates (checked before download starts):
+ *   1. Requested version must be strictly newer than running
+ *   2. Valve must be in fully closed (safe) state
+ *
+ * Failure behavior:
+ *   - Any failure before esp_https_ota_finish() leaves the
+ *     device untouched — it keeps running current firmware.
+ *   - After reboot, if new firmware crashes before validation,
+ *     the bootloader rolls back to this firmware automatically.
+ *
+ * @param pvParameter  OtaRequest* (heap), freed before task exit
+ */
 static void ota_task(void *pvParameter) {
     OtaRequest *req = (OtaRequest *)pvParameter;
 
@@ -66,6 +102,7 @@ static void ota_task(void *pvParameter) {
         goto cleanup;
     }
 
+    /*----------------- 3. Start HTTPS Download -----------------*/
     ota_running = true;
     ESP_LOGI(TAG, "Starting OTA from: %s", req->url);
 
@@ -87,6 +124,7 @@ static void ota_task(void *pvParameter) {
         goto cleanup;
     }
 
+    /*----------------- 4. Download Loop -----------------*/
     int total_size = esp_https_ota_get_image_size(handle);
     int last_percent = -1;
 
@@ -104,6 +142,7 @@ static void ota_task(void *pvParameter) {
         }
     }
 
+    /*----------------- 5. Finish or Abort -----------------*/
     if (err == ESP_OK && esp_https_ota_is_complete_data_received(handle)) {
         err = esp_https_ota_finish(handle);
         if (err == ESP_OK) {
@@ -125,6 +164,21 @@ cleanup:
     vTaskDelete(NULL);
 }
 
+
+
+/*===============================================================
+ *                  START OTA UPDATE
+ *==============================================================*/
+/**
+ * @brief Entry point: validate request and launch the OTA task
+ *
+ * Called from the MQTT handler (mqtt_handle_cmd_data) when an
+ * "ota_update" object is received. Returns immediately — the
+ * actual update runs in a background task.
+ *
+ * @param url      HTTPS URL of the firmware binary
+ * @param version  Target firmware version (e.g. "3.2.2")
+ */
 void ota_start(const char *url, const char *version) {
     if (ota_running) {
         ESP_LOGW(TAG, "OTA already in progress");
@@ -143,6 +197,26 @@ void ota_start(const char *url, const char *version) {
     xTaskCreate(ota_task, "ota_task", 8192, req, 5, NULL);
 }
 
+
+
+/*===============================================================
+ *                  CONFIRM NEW FIRMWARE (ROLLBACK)
+ *==============================================================*/
+/**
+ * @brief Validate the running firmware and cancel rollback
+ *
+ * With CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE, freshly updated
+ * firmware boots in PENDING_VERIFY state. If the device reboots
+ * (crash/watchdog) before this function runs, the bootloader
+ * automatically rolls back to the previous firmware.
+ *
+ * Called from MQTT_EVENT_CONNECTED — reaching that point proves
+ * WiFi, TLS, and broker connectivity all work on the new build,
+ * which is our definition of "healthy".
+ *
+ * Safe to call on every MQTT connect: does nothing unless the
+ * partition state is PENDING_VERIFY.
+ */
 void ota_confirm_running_firmware(void) {
     const esp_partition_t *running = esp_ota_get_running_partition();
     esp_ota_img_states_t state;
