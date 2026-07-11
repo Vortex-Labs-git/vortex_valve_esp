@@ -37,6 +37,13 @@
 #define KICK_MS             120     /* TUNE: how long the valve needs to start
                                        moving from cold. Too short re-introduces
                                        false stall trips during friction-break. */
+
+/* Pulsed approach: within APPROACH_DEG of target, stop driving continuously
+and instead nudge-then-coast so momentum doesn't overshoot the band. */
+#define APPROACH_DEG        8.0f    /* within this, switch to pulsed creep     */
+#define PULSE_ON_MS         30      /* TUNE: shorter = less overshoot, slower  */
+#define PULSE_OFF_MS        40      /* coast + settle before re-measuring      */
+
  
 #define ANGLE_TOLERANCE     2.0f    /* degrees: close enough to target         */
 #define MOVE_TIMEOUT_MS     10000   /* hard safety net                         */
@@ -202,15 +209,30 @@ int motor_set_angle( int target_angle) {
             break;
         }
 
+        bool in_kick_phase = (elapsed < KICK_MS);
 
         /* ---- Drive ---- */
-        bool in_kick_phase = (elapsed < KICK_MS);
-        int  duty = in_kick_phase ? DUTY_KICK : DUTY_RUN;
+        if (!in_kick_phase && fabs(error) < APPROACH_DEG) {
+            /* PHASE 3: pulsed creep. Nudge, then coast+settle, so we don't carry momentum past the tolerance band. */
+            if (error > 0) motor_run_aclck(&motor, DUTY_RUN);
+            else           motor_run_clk(&motor, DUTY_RUN);
+            vTaskDelay(pdMS_TO_TICKS(PULSE_ON_MS));
+            motor_stop(&motor);
  
-        if (error > 0) motor_run_aclck(&motor, duty);   /* OPEN  (raise angle) */
-        else           motor_run_clk(&motor, duty);     /* CLOSE (lower angle) */
+            ESP_LOGI(TAG, "[MOVE] tgt:%d cur:%.2f err:%.2f PULSE adc:%d", target_angle, current_angle, error, adc);
  
-        ESP_LOGI(TAG, "[MOVE] tgt:%d cur:%.2f err:%.2f duty:%d adc:%d %s", target_angle, current_angle, error, duty, adc, in_kick_phase ? "(kick)" : "");
+            vTaskDelay(pdMS_TO_TICKS(PULSE_OFF_MS));
+        } else {
+            /* PHASE 1 (kick) or PHASE 2 (continuous approach). */
+            int duty = in_kick_phase ? DUTY_KICK : DUTY_RUN;
+            if (error > 0) motor_run_aclck(&motor, duty);
+            else           motor_run_clk(&motor, duty);
+ 
+            ESP_LOGI(TAG, "[MOVE] tgt:%d cur:%.2f err:%.2f duty:%d adc:%d %s", target_angle, current_angle, error, duty, adc, in_kick_phase ? "(kick)" : "");
+ 
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+
 
 
 
