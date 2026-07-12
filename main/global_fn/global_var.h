@@ -8,6 +8,14 @@
 extern SemaphoreHandle_t valveMutex;
 extern SemaphoreHandle_t serverMutex;
 
+
+// Define the structure for device data
+typedef struct {
+    char device_id[32];
+    char ap_ssid[64];
+} DeviceIdentity;
+
+
 // Define the structure for set_data
 typedef struct {
     bool schedule_control;
@@ -63,6 +71,7 @@ typedef struct {
 
 
 // Declare the global variables
+extern DeviceIdentity deviceIdentity;
 extern SetData serverData;
 extern SetControl serverControl;
 extern GetWifi wifiStaData;

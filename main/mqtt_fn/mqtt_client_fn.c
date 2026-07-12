@@ -3,6 +3,8 @@
 #include "cJSON.h"
 #include "mqtt_client.h"
 
+
+#include "global_fn/global_var.h"
 #include "mqtt_client_fn.h"
 #include "mqtt_state_fn.h"
 
@@ -13,15 +15,14 @@
 
 // MQTT Broker URI (set in menuconfig)
 #define MQTT_BROKER_URI CONFIG_MQTT_BROKER_URI
-// #define MQTT_BROKER_URI  "mqtts://82.29.161.52:8883"
-#define DEVICE_ID CONFIG_WIFI_VALVE_ID
-
-// Base topic structure:
-// vortex_device/wifi_valve/<DEVICE_ID>
-#define BASE_TOPIC "vortex_device/wifi_valve/" DEVICE_ID
+// #define MQTT_BROKER_URI  "mqtts://82.29.161.52:8883
 
 // Maximum allowed MQTT payload size
 #define MAX_MQTT_PAYLOAD 4096
+
+// Base topic structure:
+// vortex_device/wifi_valve/<deviceIdentity.device_id>
+static char base_topic[96];
 
 static const char *TAG = "MQTT_CLIENT";
 static esp_mqtt_client_handle_t mqtt_client;
@@ -69,9 +70,9 @@ static void mqtt_publish_message(const char *sub_topic, cJSON *message)
     }
 
     // Construct full topic:
-    // vortex_device/wifi_valve/<DEVICE_ID>/<sub_topic>
+    // vortex_device/wifi_valve/<deviceIdentity.device_id>/<sub_topic>
     char full_topic[128];
-    snprintf(full_topic, sizeof(full_topic), "%s/%s", BASE_TOPIC, sub_topic);
+    snprintf(full_topic, sizeof(full_topic), "%s/%s", base_topic, sub_topic);
 
     // ESP_LOGI(TAG, "Publishing to %s", full_topic);
     ESP_LOGI(TAG, "Publish Payload: %s", json_str);
@@ -186,8 +187,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             char topic_cmd_data[128];
             char topic_control_data[128];
 
-            snprintf(topic_cmd_data, sizeof(topic_cmd_data), "%s/cmd_data", BASE_TOPIC);
-            snprintf(topic_control_data, sizeof(topic_control_data), "%s/control_data", BASE_TOPIC);
+            snprintf(topic_cmd_data, sizeof(topic_cmd_data), "%s/cmd_data", base_topic);
+            snprintf(topic_control_data, sizeof(topic_control_data), "%s/control_data", base_topic);
 
             esp_mqtt_client_subscribe(client, topic_cmd_data, 0);
             esp_mqtt_client_subscribe(client, topic_control_data, 0);
@@ -315,10 +316,14 @@ void start_mqtt_client(void)
     }
 
     ESP_LOGI(TAG, "Starting MQTT client...");
+
+    snprintf(base_topic, sizeof(base_topic), "vortex_device/wifi_valve/%s", deviceIdentity.device_id);
+    ESP_LOGI(TAG, "Base topic: %s", base_topic);
+
     
     esp_mqtt_client_config_t mqtt_cfg = {
         .broker.address.uri = MQTT_BROKER_URI,
-        .credentials.client_id = DEVICE_ID,
+        .credentials.client_id = deviceIdentity.device_id,
         .broker.verification.certificate = (const char *)_binary_ca_cert_pem_start,
         .network.disable_auto_reconnect = false,
         .session.keepalive = 60,

@@ -11,12 +11,6 @@
 #include "eeprom_fn/schedule_storage.h"
 
 
-/*---------------------------------------------------------------
- * Configuration
- *--------------------------------------------------------------*/
-
-// Device ID configured from menuconfig
-#define DEVICE_ID CONFIG_WIFI_VALVE_ID
 
 static const char *TAG = "MQTT_STATE";
 
@@ -259,7 +253,7 @@ cJSON* create_valve_status() {
 
     cJSON_AddStringToObject(json, "event", "valve_status");
     cJSON_AddStringToObject(json, "timestamp", timestamp);
-    cJSON_AddStringToObject(json, "device_id", DEVICE_ID);
+    cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
     cJSON_AddStringToObject(json, "status", "online");
 
     return json;
@@ -292,7 +286,7 @@ cJSON* create_valve_state_data() {
 
     cJSON_AddStringToObject(json, "event", "valve_basic_data");
     cJSON_AddStringToObject(json, "timestamp", timestamp);
-    cJSON_AddStringToObject(json, "device_id", DEVICE_ID);
+    cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
 
     cJSON *controller_data = cJSON_CreateObject();
     cJSON_AddBoolToObject(controller_data, "schedule", localCopy.schedule_control);
@@ -332,7 +326,7 @@ cJSON* create_valve_error() {
 
     cJSON_AddStringToObject(json, "event", "valve_error");
     cJSON_AddStringToObject(json, "timestamp", timestamp);
-    cJSON_AddStringToObject(json, "device_id", DEVICE_ID);
+    cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
 
     xSemaphoreTake(valveMutex, portMAX_DELAY);
     cJSON_AddStringToObject(json, "error", valveData.error_msg);

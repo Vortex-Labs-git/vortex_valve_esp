@@ -2,6 +2,7 @@ idf_component_register(SRCS
                             "main.c"
                             "global_fn/global_var.c"
                             "ota_fn/ota_update_fn.c"
+                            "eeprom_fn/id_storage.c"
                             "eeprom_fn/wifi_storage.c"
                             "eeprom_fn/schedule_storage.c"
                             "eeprom_fn/encoder_storage.c"

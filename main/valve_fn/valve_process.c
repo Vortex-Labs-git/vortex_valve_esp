@@ -93,10 +93,14 @@ void init_valve_system(void) {
 
     int adc = pot_read_filtered(&potentiometer);
     float current_angle = pot_to_angle(&potentiometer, adc);
+    bool open_now  = (current_angle >= 88);
+    bool close_now = (current_angle <= 2);
 
     xSemaphoreTake(valveMutex, portMAX_DELAY);
     valveData.encoder_value = adc;
     valveData.angle = current_angle;
+    valveData.is_open = open_now;
+    valveData.is_close = close_now;
     xSemaphoreGive(valveMutex);
 
     ESP_LOGI(TAG, "Valve system initialized");

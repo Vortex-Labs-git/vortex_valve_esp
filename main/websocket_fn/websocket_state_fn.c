@@ -12,12 +12,6 @@
 #include "valve_fn/valve_process.h"
 
 
-/*---------------------------------------------------------------
- * Configuration
- *--------------------------------------------------------------*/
-
-// Device ID from menuconfig
-#define DEVICE_ID CONFIG_WIFI_VALVE_ID
 
 // WebSocket authentication passkey (menuconfig)
 #define PASSKEY_VALUE CONFIG_WS_PASSKEY_VALUE
@@ -45,7 +39,7 @@ void send_device_info(void) {
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "event", "device_info");
     cJSON_AddStringToObject(json, "timestamp", timestamp);
-    cJSON_AddStringToObject(json, "device_id", DEVICE_ID);
+    cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
 
     // Convert the JSON object to string (allocate memory)
     char *json_string = cJSON_PrintUnformatted(json);
@@ -90,7 +84,7 @@ void send_device_data(void) {
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "event", "valve_data");
     cJSON_AddStringToObject(json, "timestamp", timestamp);
-    cJSON_AddStringToObject(json, "device_id", DEVICE_ID);
+    cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
 
     // get_controller object
     cJSON *controller_data = cJSON_CreateObject();
@@ -153,7 +147,7 @@ void send_motorcalibration_data(void) {
     cJSON *json = cJSON_CreateObject();
     cJSON_AddStringToObject(json, "event", "get_motor_calibration");
     cJSON_AddStringToObject(json, "timestamp", timestamp);
-    cJSON_AddStringToObject(json, "device_id", DEVICE_ID);
+    cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
 
     // get_encoder object
     cJSON *encoder_data = cJSON_CreateObject();
@@ -203,7 +197,7 @@ void offline_data(cJSON *event, cJSON *json) {
             cJSON *user_id = cJSON_GetObjectItem(data, "user_id");
             cJSON *device_id = cJSON_GetObjectItem(data, "device_id");
             if (device_id != NULL && cJSON_IsString(device_id)) {
-                if (strcmp(device_id->valuestring, DEVICE_ID) == 0) {
+                if (strcmp(device_id->valuestring, deviceIdentity.device_id) == 0) {
                     ESP_LOGW(TAG, "User send the correct device ID %s, user ID %s", device_id->valuestring, user_id->valuestring);
                     send_device_data();
                     ESP_LOGW(TAG, "Send valve data");
@@ -298,7 +292,7 @@ void offline_data(cJSON *event, cJSON *json) {
 
         cJSON *device_id = cJSON_GetObjectItem(json, "device_id");
         if (device_id != NULL && cJSON_IsString(device_id)) {
-            if (strcmp(device_id->valuestring, DEVICE_ID) == 0) {
+            if (strcmp(device_id->valuestring, deviceIdentity.device_id) == 0) {
                 ESP_LOGW(TAG, "User send the correct device ID %s", device_id->valuestring);
                 send_motorcalibration_data();
                 ESP_LOGW(TAG, "Send motor calibration data");
@@ -315,7 +309,7 @@ void offline_data(cJSON *event, cJSON *json) {
 
         cJSON *device_id = cJSON_GetObjectItem(json, "device_id");
         if (device_id != NULL && cJSON_IsString(device_id)) {
-            if (strcmp(device_id->valuestring, DEVICE_ID) == 0) {
+            if (strcmp(device_id->valuestring, deviceIdentity.device_id) == 0) {
                 ESP_LOGW(TAG, "User send the correct device ID %s", device_id->valuestring);
 
                 cJSON *encoder_data = cJSON_GetObjectItem(json, "encoder_data");
@@ -360,7 +354,7 @@ void offline_data(cJSON *event, cJSON *json) {
 
         cJSON *device_id = cJSON_GetObjectItem(json, "device_id");
         if (device_id != NULL && cJSON_IsString(device_id)) {
-            if (strcmp(device_id->valuestring, DEVICE_ID) == 0) {
+            if (strcmp(device_id->valuestring, deviceIdentity.device_id) == 0) {
                 ESP_LOGW(TAG, "User send the correct device ID %s", device_id->valuestring);
                 
                 cJSON *set_motor = cJSON_GetObjectItem(json, "set_motor");

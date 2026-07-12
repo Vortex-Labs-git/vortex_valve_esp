@@ -38,6 +38,7 @@
 #include "lwip/sys.h"
 
 #include "global_fn/global_var.h"
+#include "eeprom_fn/id_storage.h"
 #include "eeprom_fn/wifi_storage.h"
 #include "eeprom_fn/schedule_storage.h"
 #include "eeprom_fn/encoder_storage.h"
@@ -61,7 +62,6 @@
 
 
 /* AP Configuration */
-#define ESP_WIFI_AP_SSID                    CONFIG_ESP_WIFI_AP_SSID
 #define ESP_WIFI_AP_PASSWD                  CONFIG_ESP_WIFI_AP_PASSWORD
 #define ESP_WIFI_CHANNEL                    CONFIG_ESP_WIFI_AP_CHANNEL
 #define MAX_STA_CONN                        CONFIG_ESP_MAX_STA_CONN_AP
@@ -109,8 +109,7 @@ static bool web_running = false;
  *  - If AP client connects → stop router scanning
  *  - If AP client disconnects → resume router search
  */
-static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data)
-{
+static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t event_id, void* event_data) {
 
     /* ================= ROUTER (STA) EVENTS ================= */
 
@@ -290,15 +289,13 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
  *
  * @return Pointer to AP network interface
  */
-esp_netif_t *wifi_init_softap(void)
-{
+esp_netif_t *wifi_init_softap(void) {
     // Create netifs
     esp_netif_t *esp_netif_ap = esp_netif_create_default_wifi_ap();
 
     wifi_config_t wifi_ap_config = {
         .ap = {
-            .ssid = ESP_WIFI_AP_SSID,
-            .ssid_len = strlen(ESP_WIFI_AP_SSID),
+            .ssid_len = strlen(deviceIdentity.ap_ssid),
             .channel = ESP_WIFI_CHANNEL,
             .password = ESP_WIFI_AP_PASSWD,
             .max_connection = MAX_STA_CONN,
@@ -308,6 +305,7 @@ esp_netif_t *wifi_init_softap(void)
             },
         },
     };
+    strlcpy((char *)wifi_ap_config.ap.ssid, deviceIdentity.ap_ssid, sizeof(wifi_ap_config.ap.ssid));
 
     if (strlen(ESP_WIFI_AP_PASSWD) == 0) {
         wifi_ap_config.ap.authmode = WIFI_AUTH_OPEN;
@@ -315,7 +313,7 @@ esp_netif_t *wifi_init_softap(void)
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_ap_config));
 
-    ESP_LOGI(TAG_AP, "wifi_init_softap finished. SSID:%s password:%s channel:%d", ESP_WIFI_AP_SSID, ESP_WIFI_AP_PASSWD, ESP_WIFI_CHANNEL);
+    ESP_LOGI(TAG_AP, "wifi_init_softap finished. SSID:%s password:%s channel:%d", deviceIdentity.ap_ssid, ESP_WIFI_AP_PASSWD, ESP_WIFI_CHANNEL);
 
     return esp_netif_ap;
 }
@@ -334,8 +332,7 @@ esp_netif_t *wifi_init_softap(void)
  *
  * @return Pointer to STA network interface
  */
-esp_netif_t *wifi_init_sta(void)
-{
+esp_netif_t *wifi_init_sta(void) {
     // Create netifs
     esp_netif_t *esp_netif_sta = esp_netif_create_default_wifi_sta();
 
@@ -377,8 +374,7 @@ esp_netif_t *wifi_init_sta(void)
  *  5. Configure STA
  *  6. Start WiFi
  */
-void wifi_init_smart_mode(void)
-{
+void wifi_init_smart_mode(void) {
     // Register Event handler
     ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
                     ESP_EVENT_ANY_ID,
@@ -430,8 +426,7 @@ void wifi_init_smart_mode(void)
  *  - Start Smart WiFi
  *  - Obtain system time
  */
-void app_main(void)
-{
+void app_main(void) {
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -445,10 +440,11 @@ void app_main(void)
     ESP_ERROR_CHECK(ret);
 
 
+    id_storage_load();
+
 #if CONFIG_ESP_WIFI_STA_MODE_RESET
     wifi_storage_restore_default();
 #endif
-
     wifi_storage_load();
 
     valveMutex = xSemaphoreCreateMutex();
