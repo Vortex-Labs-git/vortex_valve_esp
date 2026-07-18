@@ -94,7 +94,7 @@ void init_valve_system(void) {
     int adc = pot_read_filtered(&potentiometer);
     float current_angle = pot_to_angle(&potentiometer, adc);
     bool open_now  = (current_angle >= 88);
-    bool close_now = (current_angle <= 2);
+    bool close_now = (current_angle <= 4);
 
     xSemaphoreTake(valveMutex, portMAX_DELAY);
     valveData.encoder_value = adc;
