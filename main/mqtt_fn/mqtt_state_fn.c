@@ -4,8 +4,8 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 
-#include "time_func.h"
-#include "global_var.h"
+#include "time_fn/time_func.h"
+#include "global_fn/global_var.h"
 #include "mqtt_state_fn.h"
 
 

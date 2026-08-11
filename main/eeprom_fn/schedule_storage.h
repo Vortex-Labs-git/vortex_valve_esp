@@ -1,7 +1,7 @@
 #ifndef SCHEDULE_STORAGE_H
 #define SCHEDULE_STORAGE_H
 
-#include "global_var.h"
+#include "global_fn/global_var.h"
 
 esp_err_t schedule_storage_load(ScheduleInfo *scheList,
                                 size_t maxListSize,

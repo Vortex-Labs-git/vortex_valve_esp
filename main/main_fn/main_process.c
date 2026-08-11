@@ -20,12 +20,12 @@
 #include <string.h>
 #include "esp_log.h"
 
-#include "global_var.h"
-#include "time_func.h"
+#include "global_fn/global_var.h"
+#include "time_fn/time_func.h"
 #include "valve_fn/valve_process.h"
 #include "eeprom_fn/schedule_storage.h" 
 
-#include "main_process.h"
+#include "main_fn/main_process.h"
 
 /**
  * @brief Task execution period in milliseconds

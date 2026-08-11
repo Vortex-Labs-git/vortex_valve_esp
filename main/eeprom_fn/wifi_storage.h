@@ -1,7 +1,7 @@
 #ifndef WIFI_STORAGE_H
 #define WIFI_STORAGE_H
 
-#include "global_var.h"
+#include "global_fn/global_var.h"
 
 
 esp_err_t wifi_storage_load(void);
