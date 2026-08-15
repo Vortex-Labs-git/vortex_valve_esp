@@ -65,7 +65,7 @@ void mqtt_handle_cmd_data(const char *data) {
         cJSON *angle = cJSON_GetObjectItem(valve_data, "angle");
 
         if (cJSON_IsBool(set_angle) && cJSON_IsNumber(angle)) {
-            localCopy.set_angle = cJSON_IsTrue(set_angle);
+            localCopy.user_control = cJSON_IsTrue(set_angle);
             localCopy.angle = angle->valueint;
         }
 
@@ -124,78 +124,156 @@ void mqtt_handle_cmd_data(const char *data) {
  */
 void mqtt_handle_control_data(const char *data) {
     cJSON *json_control_data = cJSON_Parse(data);
-    SetControl localCopy;
-
     if (json_control_data == NULL) {
         ESP_LOGE(TAG, "Invalid JSON received");
         return;
     }
 
+    SetControl localCopy;
+    xSemaphoreTake(serverMutex, portMAX_DELAY);
+    localCopy = serverControl;
+    xSemaphoreGive(serverMutex);
+
+
     cJSON *event = cJSON_GetObjectItem(json_control_data, "event");
     cJSON *device_id = cJSON_GetObjectItem(json_control_data, "device_id");
     
-    /*----------------- Controller Enable Settings -----------------*/
-    cJSON *set_controllerdata = cJSON_GetObjectItem(json_control_data, "set_controllerdata");
-    if (cJSON_IsObject(set_controllerdata)) {
-        
-        cJSON *schedule = cJSON_GetObjectItem(set_controllerdata, "schedule");
-        cJSON *sensor = cJSON_GetObjectItem(set_controllerdata, "sensor");
-
-        if (cJSON_IsBool(schedule) && cJSON_IsBool(sensor)) {
-            localCopy.schedule_control = cJSON_IsTrue(schedule);
-            localCopy.sensor_control = cJSON_IsTrue(sensor);
-        }
-    }
 
     /*----------------- Schedule Configuration -----------------*/
-    cJSON *set_scheduledata = cJSON_GetObjectItem(json_control_data, "set_scheduledata");
-    if (cJSON_IsObject(set_scheduledata)) {
+    cJSON *schedule = cJSON_GetObjectItem(json_control_data, "schedule");
+    if (cJSON_IsObject(schedule)) {
         
-        memset(localCopy.schedule_info, 0, sizeof(localCopy.schedule_info));
-        
-        cJSON *set_schedule = cJSON_GetObjectItem(set_scheduledata, "set_schedule");
-        if (cJSON_IsBool(set_schedule)) {
-            localCopy.set_schedule = cJSON_IsTrue(set_schedule);
-        }
-
-        cJSON *schedule_info = cJSON_GetObjectItem(set_scheduledata, "schedule_info");
+        cJSON *schedule_info = cJSON_GetObjectItem(schedule, "schedule_info");
         if (cJSON_IsArray(schedule_info)) {
-            int schedule_count = cJSON_GetArraySize(schedule_info);
-            for (int i = 0; i < schedule_count && i < 10; i++) {
-
-                cJSON *schedule_item = cJSON_GetArrayItem(schedule_info, i);
-                if (cJSON_IsObject(schedule_item)) {
-
-                    cJSON *day = cJSON_GetObjectItem(schedule_item, "day");
-                    cJSON *open = cJSON_GetObjectItem(schedule_item, "open");
-                    cJSON *close = cJSON_GetObjectItem(schedule_item, "close");
-                    if (cJSON_IsString(day) && cJSON_IsString(open) && cJSON_IsString(close)) {
-                        snprintf(localCopy.schedule_info[i].day, sizeof(localCopy.schedule_info[i].day), "%s", day->valuestring);
-                        snprintf(localCopy.schedule_info[i].open, sizeof(localCopy.schedule_info[i].open), "%s", open->valuestring);
-                        snprintf(localCopy.schedule_info[i].close, sizeof(localCopy.schedule_info[i].close), "%s", close->valuestring);
+ 
+            memset(localCopy.schedule_info, 0, sizeof(localCopy.schedule_info));
+            localCopy.schedule_count = 0;
+ 
+            int n = cJSON_GetArraySize(schedule_info);
+            for (int i = 0; i < n && localCopy.schedule_count < 10; i++) {
+ 
+                cJSON *item = cJSON_GetArrayItem(schedule_info, i);
+                if (!cJSON_IsObject(item)) continue;
+ 
+                ScheduleInfo *slot = &localCopy.schedule_info[localCopy.schedule_count];
+ 
+                cJSON *day = cJSON_GetObjectItem(item, "day");
+                if (cJSON_IsString(day)) {
+                    snprintf(slot->day, sizeof(slot->day), "%s", day->valuestring);
+                }
+ 
+                /* The time window is a DYNAMIC KEY ("HH:MM-HH:MM"),
+                   its value is the target angle. Find the first child
+                   that isn't "day". */
+                bool got_window = false;
+                for (cJSON *child = item->child; child != NULL; child = child->next) {
+                    if (child->string == NULL) continue;
+                    if (strcmp(child->string, "day") == 0) continue;
+ 
+                    const char *win  = child->string;
+                    const char *dash = strchr(win, '-');
+                    if (dash == NULL) continue;   /* not a window key */
+ 
+                    size_t open_len = (size_t)(dash - win);
+                    if (open_len >= sizeof(slot->open)) open_len = sizeof(slot->open) - 1;
+                    memcpy(slot->open, win, open_len);
+                    slot->open[open_len] = '\0';
+ 
+                    snprintf(slot->close, sizeof(slot->close), "%s", dash + 1);
+ 
+                    if (cJSON_IsString(child)) {
+                        char *endp = NULL;
+                        long a = strtol(child->valuestring, &endp, 10);
+                        if (endp == child->valuestring || a < 0 || a > 90) {
+                            ESP_LOGW(TAG, "Bad angle '%s' in window %s, skipping entry", child->valuestring ? child->valuestring : "(null)", win);
+                            got_window = false;      // reject this schedule entry
+                            break;
+                        }
+                        slot->angle = (int)a;
                     }
+ 
+                    got_window = true;
+                    break;
+                }
+ 
+                if (got_window && slot->day[0] != '\0') {
+                    localCopy.schedule_count++;
                 }
             }
+
+ 
+            ESP_LOGI(TAG, "Parsed %d schedule entrie(s)", localCopy.schedule_count);
         }
+
     }
 
-    /*----------------- Sensor Limits -----------------*/
-    cJSON *set_sensordata = cJSON_GetObjectItem(json_control_data, "set_sensordata");
-    if (cJSON_IsObject(set_sensordata)) {
-
-        cJSON *upper_limit = cJSON_GetObjectItem(set_sensordata, "upper_limit");
-        cJSON *lower_limit = cJSON_GetObjectItem(set_sensordata, "lower_limit");
-        if (cJSON_IsNumber(upper_limit) && cJSON_IsNumber(lower_limit)) {
-            localCopy.sensor_upper_limit = upper_limit->valueint;
-            localCopy.sensor_lower_limit = lower_limit->valueint;
+    /* ----------------- SENSOR ----------------- */
+    cJSON *sensor = cJSON_GetObjectItem(json_control_data, "sensor");
+    if (cJSON_IsObject(sensor)) {
+ 
+        /* sensor_rule: { "low-high": "angle", ... } */
+        cJSON *sensor_rule = cJSON_GetObjectItem(sensor, "sensor_rule");
+        if (cJSON_IsObject(sensor_rule)) {
+ 
+            memset(localCopy.sensor_rules, 0, sizeof(localCopy.sensor_rules));
+            localCopy.sensor_rule_count = 0;
+ 
+            for (cJSON *child = sensor_rule->child; child != NULL; child = child->next) {
+                if (localCopy.sensor_rule_count >= 10) break;
+                if (child->string == NULL) continue;
+ 
+                int low = 0, high = 0;
+                if (sscanf(child->string, "%d-%d", &low, &high) == 2) {
+                    SensorRule *r = &localCopy.sensor_rules[localCopy.sensor_rule_count];
+                    r->low  = low;
+                    r->high = high;
+                    if (cJSON_IsString(child))      r->angle = atoi(child->valuestring);
+                    else if (cJSON_IsNumber(child)) r->angle = child->valueint;
+                    localCopy.sensor_rule_count++;
+                }
+            }
+            ESP_LOGI(TAG, "Parsed %d sensor rule(s)", localCopy.sensor_rule_count);
+        }
+ 
+        /* sensor_data: single object */
+        cJSON *sensor_data = cJSON_GetObjectItem(sensor, "sensor_data");
+        if (cJSON_IsObject(sensor_data)) {
+ 
+            memset(&localCopy.sensor_data, 0, sizeof(localCopy.sensor_data));
+ 
+            cJSON *unit_id   = cJSON_GetObjectItem(sensor_data, "unit_id");
+            cJSON *sid       = cJSON_GetObjectItem(sensor_data, "sensor_id");
+            cJSON *sname     = cJSON_GetObjectItem(sensor_data, "sensor_name");
+            cJSON *last_seen = cJSON_GetObjectItem(sensor_data, "last_seen");
+            cJSON *stype     = cJSON_GetObjectItem(sensor_data, "sensor_type");
+            cJSON *sval      = cJSON_GetObjectItem(sensor_data, "sensor_value");
+ 
+            if (cJSON_IsString(unit_id))
+                snprintf(localCopy.sensor_data.unit_id, sizeof(localCopy.sensor_data.unit_id), "%s", unit_id->valuestring);
+            if (cJSON_IsString(sid))
+                snprintf(localCopy.sensor_data.sensor_id, sizeof(localCopy.sensor_data.sensor_id), "%s", sid->valuestring);
+            if (cJSON_IsString(sname))
+                snprintf(localCopy.sensor_data.sensor_name, sizeof(localCopy.sensor_data.sensor_name), "%s", sname->valuestring);
+            if (cJSON_IsString(last_seen))
+                snprintf(localCopy.sensor_data.last_seen, sizeof(localCopy.sensor_data.last_seen), "%s", last_seen->valuestring);
+            if (cJSON_IsString(stype))
+                snprintf(localCopy.sensor_data.sensor_type, sizeof(localCopy.sensor_data.sensor_type), "%s", stype->valuestring);
+ 
+            /* sensor_value arrives as a string ("45") or possibly a number */
+            if (cJSON_IsString(sval))      localCopy.sensor_data.sensor_value = (float)atof(sval->valuestring);
+            else if (cJSON_IsNumber(sval)) localCopy.sensor_data.sensor_value = (float)sval->valuedouble;
+ 
+            ESP_LOGI(TAG, "Sensor %s = %.2f",
+                     localCopy.sensor_data.sensor_id,
+                     localCopy.sensor_data.sensor_value);
         }
     }
-
-    /*----------------- Update Shared Control Data -----------------*/
+ 
+    /* ----------------- Commit ----------------- */
     xSemaphoreTake(serverMutex, portMAX_DELAY);
     serverControl = localCopy;
     xSemaphoreGive(serverMutex);
-
+ 
     cJSON_Delete(json_control_data);
     
 }

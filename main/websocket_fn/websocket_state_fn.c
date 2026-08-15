@@ -225,7 +225,7 @@ void offline_data(cJSON *event, cJSON *json) {
                 
                 cJSON *angle = cJSON_GetObjectItem(valve_data, "angle");
                 if (angle != NULL && cJSON_IsNumber(angle)) {
-                    localCopy.set_angle = true;
+                    localCopy.user_control = true;
                     localCopy.angle = angle->valueint;
                     ESP_LOGI(TAG, "Angle: %d", angle->valueint);
 
@@ -234,7 +234,7 @@ void offline_data(cJSON *event, cJSON *json) {
                 }
             } else {
                 ESP_LOGW(TAG, "\"set_angle\" is false or missing");
-                localCopy.set_angle = false;
+                localCopy.user_control = false;
                 localCopy.angle = 0;
             }
 
@@ -367,7 +367,7 @@ void offline_data(cJSON *event, cJSON *json) {
 
                     if (clk && !aclk) {
                         xSemaphoreTake(serverMutex, portMAX_DELAY);
-                        serverData.set_angle = false;
+                        serverData.user_control = false;
                         xSemaphoreGive(serverMutex);
                         motor_rotate_clk();
                         send_motorcalibration_data();
@@ -375,7 +375,7 @@ void offline_data(cJSON *event, cJSON *json) {
                     } 
                     else if (!clk && aclk) {
                         xSemaphoreTake(serverMutex, portMAX_DELAY);
-                        serverData.set_angle = false;
+                        serverData.user_control = false;
                         xSemaphoreGive(serverMutex);
                         motor_rotate_aclk();
                         send_motorcalibration_data();

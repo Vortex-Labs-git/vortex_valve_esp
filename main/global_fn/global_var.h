@@ -6,7 +6,9 @@
 #include "freertos/semphr.h"
 
 extern SemaphoreHandle_t valveMutex;
+extern SemaphoreHandle_t scheduleMutex;
 extern SemaphoreHandle_t serverMutex;
+
 
 
 // Define the structure for device data
@@ -20,27 +22,40 @@ typedef struct {
 typedef struct {
     bool schedule_control;
     bool sensor_control;
-    bool set_angle;
+    bool user_control;
     int angle;
 } SetData;
 
 
 // Define the structure for set_control
-#define DAY_SIZE   16   // Enough for "Wednesday" + null
-#define TIME_SIZE   8   // Enough for "HH:MM" + optional seconds + null
 
 typedef struct {
-    char day[DAY_SIZE];
-    char open[TIME_SIZE];
-    char close[TIME_SIZE];
+    char day[16];
+    char open[8];
+    char close[8];
+    int  angle;    
 } ScheduleInfo;
 typedef struct {
-    bool schedule_control;
-    bool sensor_control;
-    bool set_schedule;
-    ScheduleInfo schedule_info[20];
-    int sensor_upper_limit;
-    int sensor_lower_limit;
+    int low;                 /* "0-30"  -> low=0  */
+    int high;                /*         -> high=30 */
+    int angle;               /* value   -> target angle */
+} SensorRule;
+typedef struct {
+    char  unit_id[16];
+    char  sensor_id[16];
+    char  sensor_name[32];
+    char  last_seen[32];
+    char  sensor_type[24];
+    float sensor_value;      /* arrives as string "45" -> 45.0 */
+} SensorData;
+typedef struct {
+    ScheduleInfo schedule_info[10];
+    int          schedule_count;
+
+    SensorRule   sensor_rules[10];
+    int          sensor_rule_count;
+
+    SensorData   sensor_data;
 } SetControl;
 
 

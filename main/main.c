@@ -74,6 +74,10 @@
  */
 SemaphoreHandle_t valveMutex = NULL;
 /**
+ * @brief Mutex to protect schedule operations
+ */
+SemaphoreHandle_t scheduleMutex = NULL;
+/**
  * @brief Mutex to protect web server operations
  */
 SemaphoreHandle_t serverMutex = NULL;
@@ -450,6 +454,12 @@ void app_main(void) {
     valveMutex = xSemaphoreCreateMutex();
     if (valveMutex == NULL) {
         ESP_LOGE(TAG_MAIN, "Failed to create valveMutex");
+        return;
+    }
+
+    scheduleMutex = xSemaphoreCreateMutex();
+    if (scheduleMutex == NULL) {
+        ESP_LOGE(TAG_MAIN, "Failed to create scheduleMutex");
         return;
     }
 

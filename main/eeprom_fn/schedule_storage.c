@@ -208,9 +208,6 @@ void load_eeprom_schedule(){
     bool enabled = false;
     schedule_set_enable_load(&enabled);
 
-    xSemaphoreTake(serverMutex, portMAX_DELAY);
-    serverData.schedule_control = enabled;
-    xSemaphoreGive(serverMutex);
     ESP_LOGI(TAG_SCHEDULE, "Loaded schedule enable state: %s", enabled ? "true" : "false");
 
     /**
@@ -222,42 +219,11 @@ void load_eeprom_schedule(){
      * Step 2: Load schedule data from NVS
      */
     if (schedule_storage_load(loaded_schedule, 10, &loaded_count) == ESP_OK) {
-        // Acquire mutex before modifying shared data
-        xSemaphoreTake(serverMutex, portMAX_DELAY);
-
-        // Copy loaded schedule into global runtime structure
-        
-        for (int i = 0; i < loaded_count; i++) {
-            serverControl.schedule_info[i] = loaded_schedule[i];
-        }
-        xSemaphoreGive(serverMutex);
         ESP_LOGI(TAG_SCHEDULE, "Loaded %d schedule entries from NVS", loaded_count);
     } else {
         ESP_LOGI(TAG_SCHEDULE, "No schedule stored in NVS, waiting for MQTT update");
     }
 }
-
-/* ======================================================================== */
-/* ============================== EXAMPLE ================================= */
-/* ======================================================================== */
-
-/*
-Example usage:
-
-// Define schedule entries
-ScheduleInfo schedule[7] = {
-    {"Mon", "08:00", "17:00"},
-    {"Tue", "08:00", "17:00"},
-};
-
-// Save 2 entries to NVS
-schedule_storage_save(schedule, 2);
-
-// Load schedule from NVS
-ScheduleInfo loaded[7];
-size_t loaded_count;
-schedule_storage_load(loaded, 7, &loaded_count);
-*/
 
 
 /* ======================================================================== */

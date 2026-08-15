@@ -34,13 +34,13 @@ menu "WiFi Mode Configuration"
 
         config ESP_WIFI_STA_SSID
             string "WiFi SSID"
-            default "sta_ssid"
+            default "OPPO_A78"
             help
                 SSID (network name) for the example's sta to connect to.
 
         config ESP_WIFI_STA_PASSWD
             string "WiFi Password"
-            default "sta_password"
+            default "12345679"
             help
                 WiFi password for the example to use.
 

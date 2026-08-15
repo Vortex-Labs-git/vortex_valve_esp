@@ -135,7 +135,7 @@ void valve_sync_process(void *pvParameters)
             /**
              * Check if manual angle set command is requested
              */
-            if (localServerData.set_angle) {
+            if (localServerData.user_control) {
 
                 valve_busy = true;
 
@@ -202,15 +202,17 @@ void valve_sync_process(void *pvParameters)
             const char *today_str = week_days[timeinfo.tm_wday];
             int current_minutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
 
-            bool should_open = false;
-
+            int  target_angle = 0;
+            bool matched      = false;
+            
+            xSemaphoreTake(scheduleMutex, portMAX_DELAY);
             for (int i = 0; i < 10; i++) {
                 ScheduleInfo *sched = &loaded_schedule[i];
 
                 if (sched->day[0] == '\0') continue;
 
                 // Apply if today or "Everyday"
-                ESP_LOGI(TAG_SCHEDULE, "Checking schedule: %s, open: %s, close: %s\n", sched->day, sched->open, sched->close);
+                ESP_LOGI(TAG_SCHEDULE, "Checking schedule: %s, open: %s, close: %s, angle: %d\n", sched->day, sched->open, sched->close, sched->angle);
                 if (strcmp(sched->day, today_str) != 0 && strcmp(sched->day, "Every day") != 0) {
                     continue;
                 }
@@ -221,15 +223,15 @@ void valve_sync_process(void *pvParameters)
 
                 if (open_minutes < 0 || close_minutes < 0) continue;
 
-                if (current_minutes >= open_minutes &&
-                    current_minutes < close_minutes) {
-
-                    should_open = true;
+                if (current_minutes >= open_minutes && current_minutes < close_minutes) {
+                    target_angle = sched->angle;
+                    matched      = true;
                     break;  // IMPORTANT: stop checking further
                 }
             }
+            xSemaphoreGive(scheduleMutex);  
 
-            int target_angle = should_open ? 90 : 0;
+            (void) matched;
 
             float current_angle;
             const float tolerance = 2.0;
@@ -273,12 +275,14 @@ void valve_sync_process(void *pvParameters)
 
 bool schedules_are_equal(ScheduleInfo *a, ScheduleInfo *b, int count) {
     for (int i = 0; i < count; i++) {
-        if (strcmp(a[i].day, b[i].day) != 0) return false;
-        if (strcmp(a[i].open, b[i].open) != 0) return false;
+        if (strcmp(a[i].day, b[i].day) != 0)     return false;
+        if (strcmp(a[i].open, b[i].open) != 0)   return false;
         if (strcmp(a[i].close, b[i].close) != 0) return false;
+        if (a[i].angle != b[i].angle)            return false;   /* NEW */
     }
     return true;
 }
+
 
 
 // void print_schedule(const char *title, ScheduleInfo *sched) {
@@ -297,26 +301,24 @@ bool schedules_are_equal(ScheduleInfo *a, ScheduleInfo *b, int count) {
 void print_schedule(const char *title, ScheduleInfo *sched) {
     char buffer[512];
     int offset = 0;
-
-    // Add title
+ 
     offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s: ", title);
-
-    for (int i = 0; i < loaded_count && i < 10; i++) {
+ 
+    for (int i = 0; i < loaded_count && i < MAX_SCHEDULES; i++) {
         if (sched[i].day[0] != '\0') {
             offset += snprintf(buffer + offset, sizeof(buffer) - offset,
-                               "[%s %s-%s] ",
+                               "[%s %s-%s @%d] ",
                                sched[i].day,
                                sched[i].open,
-                               sched[i].close);
+                               sched[i].close,
+                               sched[i].angle);      /* NEW */
         }
-
-        if (offset >= sizeof(buffer)) {
-            break;
-        }
+        if (offset >= (int)sizeof(buffer)) break;
     }
-
+ 
     ESP_LOGI(TAG_SCHEDULE, "%s", buffer);
 }
+
 
 
 void schedule_save_task(void *pvParameters) {
@@ -331,34 +333,24 @@ void schedule_save_task(void *pvParameters) {
 
         xSemaphoreTake(serverMutex, portMAX_DELAY);
         memcpy(schedule_copy, serverControl.schedule_info, sizeof(schedule_copy));
-        bool set_schedule = serverControl.set_schedule;
+        bool set_schedule = serverData.schedule_control;
         xSemaphoreGive(serverMutex);
 
         if (set_schedule) {
-
             // printf("Comparing schedules...\n");
+            xSemaphoreTake(scheduleMutex, portMAX_DELAY);
             print_schedule("Loaded schedule:", loaded_schedule);
-            // print_schedule("New schedule:", schedule_copy);
-
-            schedule_changed = !schedules_are_equal(
-                loaded_schedule,
-                schedule_copy,
-                MAX_SCHEDULES
-            );
+            print_schedule("New schedule:", schedule_copy);
+            schedule_changed = !schedules_are_equal( loaded_schedule, schedule_copy, MAX_SCHEDULES);
+            xSemaphoreGive(scheduleMutex);
         }
 
         if (schedule_changed) {
             if (schedule_storage_save(schedule_copy, MAX_SCHEDULES) == ESP_OK) {
-
                 ESP_LOGI(TAG_SCHEDULE,"SCHEDULE_TASK: Schedule saved to NVS\n");
-
+                xSemaphoreTake(scheduleMutex, portMAX_DELAY);
                 memcpy(loaded_schedule, schedule_copy, sizeof(loaded_schedule));
-
-                // IMPORTANT: Reset flag
-                xSemaphoreTake(serverMutex, portMAX_DELAY);
-                serverControl.set_schedule = false;
-                xSemaphoreGive(serverMutex);
-
+                xSemaphoreGive(scheduleMutex);
             } else {
                 ESP_LOGE(TAG_SCHEDULE,"SCHEDULE_TASK: Failed to save schedule\n");
             }

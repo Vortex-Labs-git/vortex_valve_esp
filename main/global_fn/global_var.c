@@ -42,7 +42,7 @@ DeviceIdentity deviceIdentity = {
 SetData serverData = {
     .schedule_control   = false,
     .sensor_control     = false,
-    .set_angle          = false,
+    .user_control          = false,
     .angle              = 0
 };
 
@@ -59,11 +59,8 @@ SetData serverData = {
  * rather than immediate control actions.
  */
 SetControl serverControl = {
-    .schedule_control   = false,
-    .sensor_control     = false,
-    .set_schedule       = false,
-    .sensor_upper_limit = 0,
-    .sensor_lower_limit = 0
+    .schedule_count = 0,
+    .sensor_rule_count = 0
 };
 
 

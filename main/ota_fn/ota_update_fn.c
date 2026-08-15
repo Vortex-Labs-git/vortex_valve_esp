@@ -8,6 +8,8 @@
 
 #include "ota_fn/ota_update_fn.h"
 #include "global_fn/global_var.h"
+#include "valve_fn/led_indicators.h"
+#include "valve_fn/valve_process.h"
 
 static const char *TAG = "OTA_UPDATE";
 
@@ -105,6 +107,7 @@ static void ota_task(void *pvParameter) {
     /*----------------- 3. Start HTTPS Download -----------------*/
     ota_running = true;
     ESP_LOGI(TAG, "Starting OTA from: %s", req->url);
+    led_blink2(&redLED, 1000, 1000);
 
     esp_http_client_config_t http_config = {
         .url = req->url,
