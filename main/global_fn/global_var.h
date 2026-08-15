@@ -92,6 +92,7 @@ extern SetControl serverControl;
 extern GetWifi wifiStaData;
 extern GetData valveData;
 extern ScheduleInfo loaded_schedule[10];
+extern bool loaded_schedule_ctrl;
 extern size_t loaded_count;
 
 #endif // GLOBAL_VAR_H

@@ -119,4 +119,5 @@ GetData valveData = {
 
 
 ScheduleInfo loaded_schedule[10];
+bool loaded_schedule_ctrl = false;
 size_t loaded_count = 0;

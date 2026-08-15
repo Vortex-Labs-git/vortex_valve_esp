@@ -209,7 +209,7 @@ void load_eeprom_schedule(){
     schedule_set_enable_load(&enabled);
 
     ESP_LOGI(TAG_SCHEDULE, "Loaded schedule enable state: %s", enabled ? "true" : "false");
-
+    loaded_schedule_ctrl = enabled;
     /**
      * Step 1: Clear temporary buffer
      */

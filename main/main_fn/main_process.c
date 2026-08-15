@@ -177,13 +177,15 @@ void valve_sync_process(void *pvParameters)
 
                 valve_busy = false;
             }
+        } else {
+            ESP_LOGI(TAG_SYNC, "Manual mode disable");
         }
 
         /* ============================================================= */
         /* 5. SCHEDULE-BASED AUTO CONTROL                                */
         /* ============================================================= */
 
-        if (localServerData.schedule_control) {
+        if (localServerData.schedule_control || loaded_schedule_ctrl) {
 
             time_t now;
             struct tm timeinfo;
@@ -260,6 +262,8 @@ void valve_sync_process(void *pvParameters)
 
                 valve_busy = false;
             }
+        } else {
+            ESP_LOGI(TAG_SYNC, "Schedule mode disable");
         }
 
         /**

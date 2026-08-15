@@ -88,7 +88,7 @@ void mqtt_handle_cmd_data(const char *data) {
     xSemaphoreTake(serverMutex, portMAX_DELAY);
 
     bool old_schedule_state = serverData.schedule_control;
-    bool new_schedule_state = localCopy.schedule_control;
+    loaded_schedule_ctrl = localCopy.schedule_control;
 
     // Update runtime state FIRST
     serverData = localCopy;
@@ -96,8 +96,8 @@ void mqtt_handle_cmd_data(const char *data) {
     xSemaphoreGive(serverMutex);
 
     /*----------------- Persist OUTSIDE mutex (IMPORTANT) -----------------*/
-    if (old_schedule_state != new_schedule_state) {
-        esp_err_t err = schedule_set_enable_save(new_schedule_state);
+    if (old_schedule_state != loaded_schedule_ctrl) {
+        esp_err_t err = schedule_set_enable_save(loaded_schedule_ctrl);
 
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "Failed to save schedule enable state to NVS");
