@@ -1,4 +1,5 @@
 #include <string.h>
+#include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -220,14 +221,48 @@ void ota_start(const char *url, const char *version) {
  * Safe to call on every MQTT connect: does nothing unless the
  * partition state is PENDING_VERIFY.
  */
-void ota_confirm_running_firmware(void) {
+void ota_confirm_running_firmware(void)
+{
     const esp_partition_t *running = esp_ota_get_running_partition();
-    esp_ota_img_states_t state;
+    esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
 
-    if (esp_ota_get_state_partition(running, &state) == ESP_OK) {
-        if (state == ESP_OTA_IMG_PENDING_VERIFY) {
-            esp_ota_mark_app_valid_cancel_rollback();
-            ESP_LOGI(TAG, "New firmware validated, rollback cancelled");
+    ESP_LOGI(TAG, "confirm() called: partition <%s> @0x%08" PRIx32,
+             running->label, running->address);
+
+    esp_err_t err = esp_ota_get_state_partition(running, &state);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "get_state_partition failed: %s", esp_err_to_name(err));
+        return;
+    }
+
+    switch (state) {
+        case ESP_OTA_IMG_PENDING_VERIFY: {
+            esp_err_t merr = esp_ota_mark_app_valid_cancel_rollback();
+            if (merr == ESP_OK) {
+                ESP_LOGI(TAG, "New firmware validated, rollback cancelled");
+            } else {
+                ESP_LOGE(TAG, "mark_app_valid failed: %s", esp_err_to_name(merr));
+            }
+            break;
         }
+        case ESP_OTA_IMG_VALID:
+            ESP_LOGI(TAG, "Already VALID — nothing to do");
+            break;
+        case ESP_OTA_IMG_NEW:
+            ESP_LOGW(TAG, "State NEW — unexpected at runtime");
+            break;
+        case ESP_OTA_IMG_INVALID:
+            ESP_LOGW(TAG, "State INVALID");
+            break;
+        case ESP_OTA_IMG_ABORTED:
+            ESP_LOGW(TAG, "State ABORTED");
+            break;
+        case ESP_OTA_IMG_UNDEFINED:
+            ESP_LOGW(TAG, "State UNDEFINED — rollback support likely disabled "
+                          "in menuconfig, or app was serial-flashed");
+            break;
+        default:
+            ESP_LOGW(TAG, "Unknown state %d", (int)state);
+            break;
     }
 }

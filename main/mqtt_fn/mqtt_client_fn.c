@@ -7,6 +7,7 @@
 #include "global_fn/global_var.h"
 #include "mqtt_client_fn.h"
 #include "mqtt_state_fn.h"
+#include "ota_fn/ota_update_fn.h"
 
 
 /*---------------------------------------------------------------
@@ -182,6 +183,9 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         case MQTT_EVENT_CONNECTED:
             ESP_LOGI(TAG, "MQTT connected");
             mqtt_connected = true;
+
+            // Broker reachable => WiFi, TLS, and auth all work on this build. Confirm the firmware so the bootloader stops arming rollback. No-op unless the partition is PENDING_VERIFY
+            ota_confirm_running_firmware();
 
             // subscribe process init
             char topic_cmd_data[128];

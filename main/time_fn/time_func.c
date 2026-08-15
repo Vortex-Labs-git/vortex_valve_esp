@@ -127,16 +127,32 @@ void update_rtc_after_ntp(void)
  * @note This function blocks until time is synchronized.
  *       Should be called after WiFi connection is established.
  */
+static bool s_sntp_started = false;   /* SNTP configured at least once */
+static bool s_sync_task_running = false;
 void obtain_time(void *pvParameters)
 {
     (void) pvParameters;
 
-    ESP_LOGI(TAG_TIME, "Initializing SNTP");
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    sntp_setservername(0, "pool.ntp.org");
-    sntp_setservername(1, "time.nist.gov");
-    sntp_setservername(2, "time.google.com");
-    sntp_init();
+    if (s_sync_task_running) {
+        ESP_LOGW(TAG_TIME, "Time sync task already running, skipping");
+        vTaskDelete(NULL);
+        return;
+    }
+    s_sync_task_running = true;
+
+    if (!s_sntp_started) {
+        ESP_LOGI(TAG_TIME, "Initializing SNTP");
+        esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+        esp_sntp_setservername(0, "pool.ntp.org");
+        esp_sntp_setservername(1, "time.nist.gov");
+        esp_sntp_setservername(2, "time.google.com");
+        esp_sntp_init();
+        s_sntp_started = true;
+    } else {
+        ESP_LOGI(TAG_TIME, "SNTP already running, restarting sync");
+        sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);  /* force a fresh sync */
+        esp_sntp_restart();
+    }
 
 
     time_t now = 0;
