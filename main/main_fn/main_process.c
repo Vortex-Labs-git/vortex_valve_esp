@@ -438,7 +438,10 @@ void valve_sync_process(void *pvParameters)
                          sdata.sensor_value);
             }
             else {
-                float value = sdata.sensor_value;
+                float raw   = sdata.sensor_value;
+                float value = roundf(raw);
+
+                ESP_LOGI(TAG_SENSOR, "Sensor raw %.2f -> matching as %.0f", raw, value);
 
                 /* Pass 1: half-open [low, high) so "0-30" and "30-60" don't
                    both claim the value 30. */
