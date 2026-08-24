@@ -432,29 +432,57 @@ void process_message(const char *payload, bool *connection_authorized) {
     }
 
 
-    /*----------------- If Already Authorized -----------------*/
-    if ( *connection_authorized) {
-        offline_data( event, json);
-    } 
-    /*----------------- Authentication Phase -----------------*/
-    else {
-        if (strcmp(event->valuestring, "request_device_info") == 0) {
-            ESP_LOGI(TAG, "Event matched: request_device_info");
+    // /*----------------- If Already Authorized -----------------*/
+    // if ( *connection_authorized) {
+    //     offline_data( event, json);
+    // } 
+    // /*----------------- Authentication Phase -----------------*/
+    // else {
+    //     if (strcmp(event->valuestring, "request_device_info") == 0) {
+    //         ESP_LOGI(TAG, "Event matched: request_device_info");
 
-            cJSON *passkey   = cJSON_GetObjectItem(json, "passkey");
-            if ( cJSON_IsString(passkey) && (strcmp(passkey->valuestring, PASSKEY_VALUE) == 0)) {
-                *connection_authorized = true;
-                ESP_LOGI(TAG, "Passkey accept");
+    //         cJSON *passkey   = cJSON_GetObjectItem(json, "passkey");
+    //         if ( cJSON_IsString(passkey) && (strcmp(passkey->valuestring, PASSKEY_VALUE) == 0)) {
+    //             *connection_authorized = true;
+    //             ESP_LOGI(TAG, "Passkey accept");
 
-                send_device_info();
-                ESP_LOGI(TAG, "Send Device info");
-            } else {
-                *connection_authorized = false;
-                ESP_LOGI(TAG, "Passkey not accept");
-            }
+    //             send_device_info();
+    //             ESP_LOGI(TAG, "Send Device info");
+    //         } else {
+    //             *connection_authorized = false;
+    //             ESP_LOGI(TAG, "Passkey not accept");
+    //         }
+    //     } else {
+    //         ESP_LOGW(TAG, "Connection not authorized");
+    //     }
+    // }
+
+    /*----------------- Authentication is always re-runnable -----------------*/
+    /* A returning client opens a NEW socket and re-sends request_device_info.
+       Handle it before the authorized check, or the stale flag routes it into
+       offline_data() — which has no case for it — and the client never gets
+       its device_info reply. */
+    if (strcmp(event->valuestring, "request_device_info") == 0) {
+        ESP_LOGI(TAG, "Event matched: request_device_info");
+
+        cJSON *passkey = cJSON_GetObjectItem(json, "passkey");
+        if (cJSON_IsString(passkey) && (strcmp(passkey->valuestring, PASSKEY_VALUE) == 0)) {
+            *connection_authorized = true;
+            ESP_LOGI(TAG, "Passkey accept");
+
+            send_device_info();
+            ESP_LOGI(TAG, "Send Device info");
         } else {
-            ESP_LOGW(TAG, "Connection not authorized");
+            *connection_authorized = false;
+            ESP_LOGI(TAG, "Passkey not accept");
         }
+    }
+    /*----------------- Everything else needs authorization -----------------*/
+    else if (*connection_authorized) {
+        offline_data(event, json);
+    }
+    else {
+        ESP_LOGW(TAG, "Connection not authorized");
     }
 
     // Free memory to prevent leaks
