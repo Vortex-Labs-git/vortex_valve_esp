@@ -48,6 +48,7 @@
 #include "valve_fn/valve_process.h"
 #include "main_fn/main_process.h"
 #include "test_fn/test_process.h"
+#include "wifi_supervisor.h"
 
 
 
@@ -210,6 +211,7 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         }
 
         led_blink2(&greenLED, 500, 5000);
+        
     }
 
     
@@ -491,5 +493,7 @@ void app_main(void) {
     xTaskCreate(schedule_save_task, "schedule_save_task", 4096, NULL, 5, NULL);
 
     xTaskCreate(valve_sync_process, "valve_sync_process", 4096, NULL, 5, NULL);
+
+    wifi_supervisor_start();
 
 }

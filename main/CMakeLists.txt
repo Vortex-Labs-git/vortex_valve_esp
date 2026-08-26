@@ -8,6 +8,7 @@ idf_component_register(SRCS
                             "eeprom_fn/encoder_storage.c"
                             "websocket_fn/websocket_server_fn.c"
                             "websocket_fn/websocket_state_fn.c"
+                            "wifi_supervisor.c"
                             "time_fn/time_func.c"
                             "mqtt_fn/mqtt_client_fn.c"
                             "mqtt_fn/mqtt_state_fn.c"
