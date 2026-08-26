@@ -17,12 +17,14 @@ idf_component_register(SRCS
                             "valve_fn/pot_read.c"
                             "valve_fn/valve_process.c"
                             "main_fn/main_process.c"
+                            "webui_fn/webui_server.c"
                             "test_fn/test_process.c"
                         INCLUDE_DIRS 
                             "."
                         EMBED_TXTFILES
                             "mqtt_fn/ca_cert.pem"
                             "ota_fn/ota_ca_cert.pem"
+                            "webui_fn/index.html"
                         REQUIRES 
                             esp_wifi 
                             mqtt 

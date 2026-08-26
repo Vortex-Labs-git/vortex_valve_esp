@@ -3,6 +3,7 @@
 
 #include "websocket_server_fn.h"
 #include "websocket_state_fn.h"
+#include "webui_fn/webui_server.h"
 
 
 /*---------------------------------------------------------------
@@ -242,6 +243,8 @@ httpd_handle_t start_webserver(void)
             .is_websocket = true
         };
         httpd_register_uri_handler(esp_server, &ws);
+
+        webui_register(esp_server);
         return esp_server;
     }
 
