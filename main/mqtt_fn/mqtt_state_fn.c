@@ -3,6 +3,7 @@
 #include "cJSON.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
+#include "esp_app_desc.h"
 
 #include "time_fn/time_func.h"
 #include "global_fn/global_var.h"
@@ -333,6 +334,9 @@ cJSON* create_valve_status() {
     cJSON_AddStringToObject(json, "timestamp", timestamp);
     cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
     cJSON_AddStringToObject(json, "status", "online");
+
+    const esp_app_desc_t *running_app = esp_app_get_description();
+    cJSON_AddStringToObject(json, "bin_version", running_app->version);
 
     return json;
 }

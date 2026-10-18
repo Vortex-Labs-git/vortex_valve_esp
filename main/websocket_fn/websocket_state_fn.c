@@ -219,6 +219,7 @@ void offline_data(cJSON *event, cJSON *json) {
         if (valve_data != NULL && cJSON_IsObject(valve_data)) {
             localCopy.schedule_control = false;
             localCopy.sensor_control = false;
+            loaded_schedule_ctrl = false;
 
             cJSON *set_angle = cJSON_GetObjectItem(valve_data, "set_angle");
             if (set_angle != NULL && cJSON_IsBool(set_angle) && set_angle->valueint == 1) {
