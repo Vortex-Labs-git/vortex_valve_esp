@@ -31,8 +31,8 @@ typedef struct {
 
 typedef struct {
     char day[16];
-    char open[8];
-    char close[8];
+    char open[12];
+    char close[12];
     int  angle;    
 } ScheduleInfo;
 typedef struct {

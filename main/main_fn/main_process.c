@@ -57,11 +57,13 @@ static const char *TAG_SCHEDULE = "SCHEDULE";
 
 
 int parse_time_str(const char *str) {
-    int h, m;
-    if (sscanf(str, "%d:%d", &h, &m) == 2) {
-        return h * 60 + m; // minutes since midnight
-    }
-    return -1; // error
+    int h = 0, m = 0, s = 0;
+    int n = sscanf(str, "%d:%d:%d", &h, &m, &s);
+    if (n < 2) return -1;
+    if (n == 2) s = 0;
+    if (h < 0 || h > 24 || m < 0 || m > 59 || s < 0 || s > 59) return -1;
+    if (h == 24 && (m != 0 || s != 0)) return -1;   /* allow "24:00:00" as end-of-day */
+    return h * 3600 + m * 60 + s;
 }
 
 /*
@@ -310,7 +312,7 @@ void valve_sync_process(void *pvParameters)
 
             const char *week_days[7] = {"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"};
             const char *today_str = week_days[timeinfo.tm_wday];
-            int current_minutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+            int current_seconds = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
 
             int  target_angle = 0;
             bool matched      = false;
@@ -327,13 +329,13 @@ void valve_sync_process(void *pvParameters)
                     continue;
                 }
 
-                int open_minutes  = parse_time_str(sched->open);
-                int close_minutes = parse_time_str(sched->close);
-                ESP_LOGI(TAG_SCHEDULE, "Parsed times - Open: %d, Close: %d, Current: %d\n", open_minutes, close_minutes, current_minutes);
+                int open_seconds  = parse_time_str(sched->open);
+                int close_seconds = parse_time_str(sched->close);
+                ESP_LOGI(TAG_SCHEDULE, "Parsed times - Open: %d, Close: %d, Current: %d (sec)\n", open_seconds, close_seconds, current_seconds);
 
-                if (open_minutes < 0 || close_minutes < 0) continue;
+                if (open_seconds < 0 || close_seconds < 0) continue;
 
-                if (current_minutes >= open_minutes && current_minutes < close_minutes) {
+                if (current_seconds >= open_seconds && current_seconds < close_seconds) {
                     target_angle = sched->angle;
                     matched      = true;
                     break;  // IMPORTANT: stop checking further
