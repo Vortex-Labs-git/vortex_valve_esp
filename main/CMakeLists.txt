@@ -12,6 +12,11 @@ idf_component_register(SRCS
                             "time_fn/time_func.c"
                             "mqtt_fn/mqtt_client_fn.c"
                             "mqtt_fn/mqtt_state_fn.c"
+                            "espnow_fn/espnow_util.c"
+                            "espnow_fn/espnow_pair.c"
+                            "espnow_fn/espnow_send.c"
+                            "espnow_fn/espnow_recv.c"
+                            "espnow_fn/espnow_link.c"
                             "valve_fn/led_indicators.c"
                             "valve_fn/valve_motor.c"
                             "valve_fn/limit_switch.c"
@@ -38,4 +43,6 @@ idf_component_register(SRCS
                             esp_event
                             i2cdev
                             driver
+                            mbedtls
+                            esp_timer
                             )
