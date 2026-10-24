@@ -66,20 +66,15 @@ SetControl serverControl = {
 
 
 /* ======================================================================== */
-/* ============================= WIFI DATA ================================ */
+/* ============================== HUB DATA ================================ */
 /* ======================================================================== */
 
 /**
- * @brief Stored WiFi Station credentials
+ * @brief Hub this valve belongs to
  *
- * Used by WiFi STA initialization.
- * Typically loaded from NVS during boot.
+ * Loaded from NVS by hub_storage_load() during boot.
  */
-GetWifi wifiStaData = {
-    .ssid       = "",
-    .password   = "",
-    .set_wifi  = false
-};
+HubConfig hubConfig = { 0 };
 
 
 /* ======================================================================== */

@@ -2,6 +2,7 @@
 #define GLOBAL_VAR_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -59,13 +60,13 @@ typedef struct {
 } SetControl;
 
 
-
-// Define the structure for get_wifi
+// Define the structure for hub connection (saved in NVS)
 typedef struct {
-    char ssid[32];
-    char password[64];
-    bool set_wifi;
-} GetWifi;
+    uint8_t hub_mac[6];         // hub to connect to (00:00:00:00:00:00 = none)
+    uint8_t pair_key[16];       // ESPNOW_PAIR_KEY_LEN
+    uint8_t last_channel;       // last channel the hub answered on (0 = unknown)
+    bool    set_hub;            // true = set by the phone, false = default
+} HubConfig;
 
 // Define the structure for get_data
 typedef struct {
@@ -89,7 +90,7 @@ typedef struct {
 extern DeviceIdentity deviceIdentity;
 extern SetData serverData;
 extern SetControl serverControl;
-extern GetWifi wifiStaData;
+extern HubConfig hubConfig;
 extern GetData valveData;
 extern ScheduleInfo loaded_schedule[10];
 extern bool loaded_schedule_ctrl;
