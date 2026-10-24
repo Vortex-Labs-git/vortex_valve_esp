@@ -406,22 +406,21 @@ void valve_sync_process(void *pvParameters)
 
             time_t seen_epoch    = 0;
             bool   sensor_online = false;
-            age_sec = (long)(now_epoch - seen_epoch);
+            long   age_sec       = 0;
 
-            if (!time_is_synced() || age_sec > SENSOR_OFFLINE_SEC) {
-                ESP_LOGW(TAG_SENSOR, "Sensor '%s' OFFLINE (last seen %ld s ago, limit %d s, time synced %d)", sdata.sensor_id, age_sec, SENSOR_OFFLINE_SEC, time_is_synced());
+            if (!time_is_synced()) {
+                /* No time from the hub yet: age cannot be measured — fail closed. */
+                ESP_LOGW(TAG_SENSOR, "Sensor '%s': no time from hub yet -> treating as OFFLINE", sdata.sensor_id);
+            } else if (!parse_last_seen(sdata.last_seen, &seen_epoch)) {
+                /* Unknown age is NOT "fresh" — fail closed. */
+                ESP_LOGW(TAG_SENSOR, "Sensor '%s': last_seen \"%s\" empty/unparsable -> treating as OFFLINE", sdata.sensor_id, sdata.last_seen);
             } else {
                 age_sec = (long)(now_epoch - seen_epoch);
-
                 if (age_sec > SENSOR_OFFLINE_SEC) {
-                    ESP_LOGW(TAG_SENSOR,
-                             "Sensor '%s' OFFLINE (last seen %ld s ago, limit %d s)",
-                             sdata.sensor_id, age_sec, SENSOR_OFFLINE_SEC);
+                    ESP_LOGW(TAG_SENSOR, "Sensor '%s' OFFLINE (last seen %ld s ago, limit %d s)", sdata.sensor_id, age_sec, SENSOR_OFFLINE_SEC);
                 } else {
                     sensor_online = true;
-                    ESP_LOGI(TAG_SENSOR,
-                             "Sensor '%s' ONLINE (age %ld s, value %.2f)",
-                             sdata.sensor_id, age_sec, sdata.sensor_value);
+                    ESP_LOGI(TAG_SENSOR, "Sensor '%s' ONLINE (age %ld s, value %.2f)", sdata.sensor_id, age_sec, sdata.sensor_value);
                 }
             }
 

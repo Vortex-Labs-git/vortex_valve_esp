@@ -2,7 +2,7 @@ idf_component_register(SRCS
                             "main.c"
                             "global_fn/global_var.c"
                             "ota_fn/ota_update_fn.c"
-                            "eeprom_fn/id_storage.c
+                            "eeprom_fn/id_storage.c"
                             "eeprom_fn/hub_storage.c"
                             "eeprom_fn/schedule_storage.c"
                             "eeprom_fn/encoder_storage.c"
@@ -32,7 +32,6 @@ idf_component_register(SRCS
                             "webui_fn/index.html"
                         REQUIRES 
                             esp_wifi 
-                            mqtt 
                             nvs_flash 
                             json 
                             esp_http_server 
@@ -40,7 +39,6 @@ idf_component_register(SRCS
                             app_update
                             esp_http_client
                             esp_event
-                            i2cdev
                             driver
                             mbedtls
                             esp_timer

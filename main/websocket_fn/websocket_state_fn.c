@@ -7,7 +7,6 @@
 #include "global_fn/global_var.h"
 #include "websocket_state_fn.h"
 #include "time_fn/time_func.h"
-#include "eeprom_fn/wifi_storage.h"
 #include "eeprom_fn/encoder_storage.h"
 #include "valve_fn/valve_process.h"
 
@@ -248,44 +247,6 @@ void offline_data(cJSON *event, cJSON *json) {
             ESP_LOGW(TAG, "\"valve_data\" field is missing or not an object");
         }
 
-    }
-    /*----------------- UPDATE WIFI CREDENTIALS -----------------*/
-    else if ( strcmp(event->valuestring, "set_valve_wifi") == 0) {
-        ESP_LOGI(TAG, "Event matched: set_valve_wifi");
-
-        cJSON *wifi_data = cJSON_GetObjectItem(json, "wifi_data");
-        if (wifi_data != NULL && cJSON_IsObject(wifi_data)) {
-            cJSON *ssid = cJSON_GetObjectItem(wifi_data, "ssid");
-            cJSON *password = cJSON_GetObjectItem(wifi_data, "password");
-            ESP_LOGI(TAG, "ssid: %s, password: %s", ssid->valuestring, password->valuestring);
-
-            if (!cJSON_IsString(ssid) || !cJSON_IsString(password)) {
-                ESP_LOGE(TAG, "Invalid WiFi JSON format");
-            }
-
-            if (strcmp(wifiStaData.ssid, ssid->valuestring) != 0 || strcmp(wifiStaData.password, password->valuestring) != 0) {
-                memset(wifiStaData.ssid, 0, sizeof(wifiStaData.ssid));
-                memset(wifiStaData.password, 0, sizeof(wifiStaData.password));
-
-                strncpy(wifiStaData.ssid, ssid->valuestring, sizeof(wifiStaData.ssid) - 1);
-                strncpy(wifiStaData.password, password->valuestring, sizeof(wifiStaData.password) - 1);
-
-                wifiStaData.set_wifi = true;
-
-                wifi_storage_save();
-
-                ESP_LOGI(TAG, "WiFi updated. Restarting...");
-                esp_restart();
-
-            } else {
-                ESP_LOGI(TAG, "WiFi data unchanged. No action taken.");
-            }
-        
-            
-
-        } else {
-            ESP_LOGW(TAG, "\"wifi_data\" field is missing or not an object");
-        }
     }
     /*----------------- GET MOTOR CALIBRATION READINGS -----------------*/
     else if ( strcmp(event->valuestring, "get_motor_calibration") == 0) {

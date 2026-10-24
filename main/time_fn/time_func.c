@@ -128,7 +128,7 @@ bool time_is_synced(void)
 void get_current_timestamp(char *timestamp, size_t timestamp_size)
 {
     time_t rawtime;
-    struct tm local_time;s
+    struct tm local_time;
 
     time(&rawtime);
     localtime_r(&rawtime, &local_time);
