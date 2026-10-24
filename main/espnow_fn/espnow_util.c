@@ -156,6 +156,7 @@ const char *espnow_msg_name(uint8_t msg_type)
         case ESPNOW_MSG_CALLX_ACK:      return "CALLX_ACK";
         case ESPNOW_MSG_ACK:            return "ACK";
         case ESPNOW_MSG_TIME_SYNC:      return "TIME_SYNC";
+        case ESPNOW_MSG_REJOIN:         return "REJOIN";
         default:                        return "UNKNOWN";
     }
 }

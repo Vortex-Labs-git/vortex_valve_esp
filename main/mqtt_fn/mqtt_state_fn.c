@@ -327,7 +327,7 @@ void mqtt_handle_topic(const char *data) {
 cJSON* create_valve_status() {
     cJSON *json = cJSON_CreateObject();
 
-    char timestamp[20];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     cJSON_AddStringToObject(json, "event", "valve_status");
@@ -363,7 +363,7 @@ cJSON* create_valve_state_data() {
 
     cJSON *json = cJSON_CreateObject();
 
-    char timestamp[20];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     cJSON_AddStringToObject(json, "event", "valve_basic_data");
@@ -403,7 +403,7 @@ cJSON* create_valve_state_data() {
 cJSON* create_valve_error() {
     cJSON *json = cJSON_CreateObject();
 
-    char timestamp[20];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     cJSON_AddStringToObject(json, "event", "valve_error");

@@ -76,7 +76,7 @@ void send_device_data(void) {
     localCopy = valveData;
     xSemaphoreGive(valveMutex);
 
-    char timestamp[25];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
 
@@ -139,7 +139,7 @@ void send_motorcalibration_data(void) {
     localCopy = valveData;
     xSemaphoreGive(valveMutex);
 
-    char timestamp[25];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
 

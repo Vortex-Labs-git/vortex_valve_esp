@@ -314,11 +314,15 @@ void valve_sync_process(void *pvParameters)
             const char *today_str = week_days[timeinfo.tm_wday];
             int current_seconds = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
 
-            int  target_angle = 0;
+            int  target_angle = 0;      // no match, or no time yet = closed
             bool matched      = false;
-            
+
+            if (!time_is_synced()) {
+                ESP_LOGW(TAG_SCHEDULE, "No time from hub yet, schedule holds valve closed");
+            }
+
             xSemaphoreTake(scheduleMutex, portMAX_DELAY);
-            for (int i = 0; i < 10; i++) {
+            for (int i = 0; i < 10 && time_is_synced(); i++) {
                 ScheduleInfo *sched = &loaded_schedule[i];
 
                 if (sched->day[0] == '\0') continue;
@@ -402,13 +406,10 @@ void valve_sync_process(void *pvParameters)
 
             time_t seen_epoch    = 0;
             bool   sensor_online = false;
-            long   age_sec       = 0;
+            age_sec = (long)(now_epoch - seen_epoch);
 
-            if (!parse_last_seen(sdata.last_seen, &seen_epoch)) {
-                /* Unknown age is NOT "fresh" — fail closed. */
-                ESP_LOGW(TAG_SENSOR,
-                         "Sensor '%s': last_seen \"%s\" empty/unparsable -> treating as OFFLINE",
-                         sdata.sensor_id, sdata.last_seen);
+            if (!time_is_synced() || age_sec > SENSOR_OFFLINE_SEC) {
+                ESP_LOGW(TAG_SENSOR, "Sensor '%s' OFFLINE (last seen %ld s ago, limit %d s, time synced %d)", sdata.sensor_id, age_sec, SENSOR_OFFLINE_SEC, time_is_synced());
             } else {
                 age_sec = (long)(now_epoch - seen_epoch);
 

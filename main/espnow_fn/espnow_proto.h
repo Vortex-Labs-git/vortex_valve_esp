@@ -74,6 +74,7 @@ typedef enum {
     ESPNOW_MSG_CALLX_ACK        = 0x12,     // hub -> device   espnow_callx_ack_t
     ESPNOW_MSG_ACK              = 0x13,     // both            espnow_ack_t
     ESPNOW_MSG_TIME_SYNC        = 0x14,     // hub -> device   espnow_time_sync_t
+    ESPNOW_MSG_REJOIN           = 0x15,     // hub -> device   header only: "unknown device, send CALLX again"
 } espnow_msg_type_t;
 
 

@@ -1,7 +1,7 @@
 #ifndef MQTT_STATE_FN_H
 #define MQTT_STATE_FN_H
 
-#include "mqtt_client_fn.h"
+#include "cJSON.h"
 
 void mqtt_handle_cmd_data(const char *data);
 void mqtt_handle_control_data(const char *data);
