@@ -23,35 +23,60 @@ menu "WiFi Mode Configuration"
                 Max number of the STA connects to AP.
     endmenu
 
-    menu "STA Configuration"
-        comment "STA Configuration"
+endmenu
 
-        config ESP_WIFI_STA_MODE_RESET
-            bool "Reset WiFi Storage to Default"
+menu "Vortex Hub Link"
+
+    menu "HUB Configuration"
+
+        comment "Default hub (empty = not paired, the phone sets it)"
+
+        config HUB_STORAGE_RESET
+            bool "Reset hub storage to default"
             default n
             help
-                Reset WiFi storage to default values.
+                Overwrite the saved hub with the defaults below on every boot.
 
-        config ESP_WIFI_STA_SSID
-            string "WiFi SSID"
-            default "OPPO_A78"
+        config HUB_DEFAULT_MAC
+            string "Default hub MAC (AA:BB:CC:DD:EE:FF)"
+            default ""
             help
-                SSID (network name) for the example's sta to connect to.
+                Hub STA MAC address. Empty = no hub.
 
-        config ESP_WIFI_STA_PASSWD
-            string "WiFi Password"
-            default "12345679"
+        config HUB_DEFAULT_PAIR_KEY
+            string "Default pair key (32 hex chars)"
+            default ""
             help
-                WiFi password for the example to use.
-
-        config ESP_WIFI_STA_MAXIMUM_RETRY
-            int "Maximum retry"
-            default 5
-            help
-                Set the maximum retry value to prevent the station from continuously
-                attempting to reconnect to the Access Point (AP) when the AP doesn't exist.
-
+                Same key as the hub. Empty = no hub.
+    
     endmenu
+
+    menu "Link Configuration"
+    
+        comment "Link timing"
+
+        config LINK_SEARCH_TIME_S
+            int "Hub search time before AP (s)"
+            range 10 600
+            default 45
+
+        config LINK_AP_TIME_S
+            int "AP window without a phone (s)"
+            range 30 600
+            default 90
+
+        config LINK_FAIL_LIMIT
+            int "Failed sends in a row before link is lost"
+            range 1 20
+            default 3
+
+        config HUB_PUBLISH_PERIOD_MS
+            int "Publish period to the hub (ms)"
+            range 1000 60000
+            default 5000
+    
+    endmenu
+
 endmenu
 
 menu "Device Configuration"
@@ -148,23 +173,6 @@ menu "Device Configuration"
             default 16
             help
                 Green LED pin number.
-    endmenu
-
-    menu "MQTT client Configuration"
-        comment "MQTT client Configuration"
-
-        config MQTT_BROKER_URI
-            string "MQTT BROKER URI"
-            default "mqtt://10.217.90.172"
-            help
-                MQTT broker URI for the device to connect to.
-
-        config MQTT_BASE_TOPIC
-            string "MQTT BASE TOPIC"
-            default "vortex_device/wifi_valve/"
-            help
-                MQTT base topic for the device communication.
-
     endmenu
     
 endmenu
