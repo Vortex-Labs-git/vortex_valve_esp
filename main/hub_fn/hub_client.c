@@ -89,8 +89,8 @@ static void hub_publish_message(uint8_t msg_type, cJSON *message)
  */
 void hub_publish_valve_data(void)
 {
-    hub_publish_message(ESPNOW_MSG_STATE_DATA, create_valve_state_data());
     hub_publish_message(ESPNOW_MSG_STATUS,     create_valve_status());
+    hub_publish_message(ESPNOW_MSG_STATE_DATA, create_valve_state_data());
     hub_publish_message(ESPNOW_MSG_ERROR,      create_valve_error());
 }
 
