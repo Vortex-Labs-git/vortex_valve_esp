@@ -342,9 +342,9 @@ void schedule_save_task(void *pvParameters) {
 
         if (set_schedule) {
 
-            // printf("Comparing schedules...\n");
+            printf("Comparing schedules...\n");
             print_schedule("Loaded schedule:", loaded_schedule);
-            // print_schedule("New schedule:", schedule_copy);
+            print_schedule("New schedule:", schedule_copy);
 
             schedule_changed = !schedules_are_equal(
                 loaded_schedule,
