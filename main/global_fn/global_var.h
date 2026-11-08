@@ -19,7 +19,7 @@ typedef struct {
 
 // Define the structure for set_control
 #define DAY_SIZE   16   // Enough for "Wednesday" + null
-#define TIME_SIZE   8   // Enough for "HH:MM" + optional seconds + null
+#define TIME_SIZE  12   // Enough for "HH:MM" + optional seconds + null
 
 typedef struct {
     char day[DAY_SIZE];

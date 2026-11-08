@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include "cJSON.h"
 #include "esp_log.h"
 #include "sdkconfig.h"
@@ -44,6 +45,12 @@ void mqtt_handle_cmd_data(const char *data) {
         ESP_LOGE(TAG, "Invalid JSON received");
         return;
     }
+
+    /* Start from the current values: a block missing from the message keeps
+       its value instead of becoming random stack data. */
+    xSemaphoreTake(serverMutex, portMAX_DELAY);
+    localCopy = serverData;
+    xSemaphoreGive(serverMutex);
 
     // Extract top-level fields
     cJSON *event = cJSON_GetObjectItem(json_cmd_data, "event");
@@ -109,6 +116,12 @@ void mqtt_handle_control_data(const char *data) {
         return;
     }
 
+    /* Start from the current values: a block missing from the message keeps
+       its value instead of becoming random stack data. */
+    xSemaphoreTake(serverMutex, portMAX_DELAY);
+    localCopy = serverControl;
+    xSemaphoreGive(serverMutex);
+
     cJSON *event = cJSON_GetObjectItem(json_control_data, "event");
     cJSON *device_id = cJSON_GetObjectItem(json_control_data, "device_id");
     
@@ -125,35 +138,54 @@ void mqtt_handle_control_data(const char *data) {
         }
     }
 
-    /*----------------- Schedule Configuration -----------------*/
-    cJSON *set_scheduledata = cJSON_GetObjectItem(json_control_data, "set_scheduledata");
-    if (cJSON_IsObject(set_scheduledata)) {
-        
-        memset(localCopy.schedule_info, 0, sizeof(localCopy.schedule_info));
-        
-        cJSON *set_schedule = cJSON_GetObjectItem(set_scheduledata, "set_schedule");
-        if (cJSON_IsBool(set_schedule)) {
-            localCopy.set_schedule = cJSON_IsTrue(set_schedule);
-        }
-
-        cJSON *schedule_info = cJSON_GetObjectItem(set_scheduledata, "schedule_info");
+    /*----------------- Schedule (server_device_mqtt format) -----------------*/
+    /*
+     * {"schedule": {"schedule_info": [ {"day":"Monday","06:00:00-06:30:00":"90"}, ... ]}}
+     * angle > 0 = OPEN window, "0" = skipped (outside every open window = closed).
+     * An empty list is valid: no open windows.
+     */
+    cJSON *schedule = cJSON_GetObjectItem(json_control_data, "schedule");
+    if (cJSON_IsObject(schedule)) {
+        cJSON *schedule_info = cJSON_GetObjectItem(schedule, "schedule_info");
         if (cJSON_IsArray(schedule_info)) {
-            int schedule_count = cJSON_GetArraySize(schedule_info);
-            for (int i = 0; i < schedule_count && i < 10; i++) {
 
-                cJSON *schedule_item = cJSON_GetArrayItem(schedule_info, i);
-                if (cJSON_IsObject(schedule_item)) {
+            memset(localCopy.schedule_info, 0, sizeof(localCopy.schedule_info));
+            int count = 0;
 
-                    cJSON *day = cJSON_GetObjectItem(schedule_item, "day");
-                    cJSON *open = cJSON_GetObjectItem(schedule_item, "open");
-                    cJSON *close = cJSON_GetObjectItem(schedule_item, "close");
-                    if (cJSON_IsString(day) && cJSON_IsString(open) && cJSON_IsString(close)) {
-                        snprintf(localCopy.schedule_info[i].day, sizeof(localCopy.schedule_info[i].day), "%s", day->valuestring);
-                        snprintf(localCopy.schedule_info[i].open, sizeof(localCopy.schedule_info[i].open), "%s", open->valuestring);
-                        snprintf(localCopy.schedule_info[i].close, sizeof(localCopy.schedule_info[i].close), "%s", close->valuestring);
-                    }
+            cJSON *item = NULL;
+            cJSON_ArrayForEach(item, schedule_info) {
+                if (count >= 10) break;                 /* the valve keeps 10 */
+                if (!cJSON_IsObject(item)) continue;
+
+                cJSON *day = cJSON_GetObjectItem(item, "day");
+                if (!cJSON_IsString(day)) continue;
+
+                for (cJSON *child = item->child; child != NULL; child = child->next) {
+                    if (child->string == NULL || strcmp(child->string, "day") == 0) continue;
+
+                    const char *dash = strchr(child->string, '-');
+                    if (dash == NULL) continue;         /* not a time window */
+
+                    int angle = 0;
+                    if (cJSON_IsString(child))      angle = atoi(child->valuestring);
+                    else if (cJSON_IsNumber(child)) angle = child->valueint;
+                    if (angle <= 0) break;              /* closed window: nothing to store */
+
+                    ScheduleInfo *slot = &localCopy.schedule_info[count];
+                    size_t open_len = (size_t)(dash - child->string);
+                    if (open_len >= sizeof(slot->open)) open_len = sizeof(slot->open) - 1;
+
+                    snprintf(slot->day, sizeof(slot->day), "%s", day->valuestring);
+                    memcpy(slot->open, child->string, open_len);
+                    slot->open[open_len] = '\0';
+                    snprintf(slot->close, sizeof(slot->close), "%s", dash + 1);
+                    count++;
+                    break;                              /* one window per entry */
                 }
             }
+
+            localCopy.set_schedule = true;              /* let schedule_save_task compare + store it */
+            ESP_LOGI(TAG, "Parsed %d open window(s) from schedule_info", count);
         }
     }
 
@@ -195,11 +227,12 @@ void mqtt_handle_topic(const char *data) {
     }
 
     cJSON *event = cJSON_GetObjectItem(json_data, "event");
-    if (cJSON_IsString(event)) {
-        ESP_LOGI(TAG, "Received event: %s", event->valuestring);
-    } else {
+    if (!cJSON_IsString(event)) {
         ESP_LOGW(TAG, "Event field missing or not a string");
+        cJSON_Delete(json_data);
+        return;
     }
+    ESP_LOGI(TAG, "Received event: %s", event->valuestring);
 
     if (strcmp(event->valuestring, "set_valve_control") == 0) {
         mqtt_handle_control_data(data);
@@ -226,7 +259,7 @@ void mqtt_handle_topic(const char *data) {
 cJSON* create_valve_status() {
     cJSON *json = cJSON_CreateObject();
 
-    char timestamp[20];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     cJSON_AddStringToObject(json, "event", "valve_status");
@@ -259,7 +292,7 @@ cJSON* create_valve_state_data() {
 
     cJSON *json = cJSON_CreateObject();
 
-    char timestamp[20];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     cJSON_AddStringToObject(json, "event", "valve_basic_data");
@@ -299,7 +332,7 @@ cJSON* create_valve_state_data() {
 cJSON* create_valve_error() {
     cJSON *json = cJSON_CreateObject();
 
-    char timestamp[20];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     cJSON_AddStringToObject(json, "event", "valve_error");
@@ -312,4 +345,3 @@ cJSON* create_valve_error() {
 
     return json;
 }
-

@@ -29,7 +29,7 @@
 /**
  * @brief Key used to store schedule blob inside namespace
  */
-#define SCHEDULE_NVS_KEY          "schedule"
+#define SCHEDULE_NVS_KEY          "schedule_s"
 
 /**
  * @brief Logging tag

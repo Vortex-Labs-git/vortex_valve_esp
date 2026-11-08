@@ -44,12 +44,17 @@ static bool valve_busy = false;
 static const char *TAG_SCHEDULE = "SCHEDULE";
 
 
+/**
+ * @brief "HH:MM:SS" (or "HH:MM") -> seconds since midnight, -1 if invalid
+ */
 int parse_time_str(const char *str) {
-    int h, m;
-    if (sscanf(str, "%d:%d", &h, &m) == 2) {
-        return h * 60 + m; // minutes since midnight
-    }
-    return -1; // error
+    int h = 0, m = 0, s = 0;
+    int n = sscanf(str, "%d:%d:%d", &h, &m, &s);
+    if (n < 2) return -1;
+    if (n == 2) s = 0;
+    if (h < 0 || h > 24 || m < 0 || m > 59 || s < 0 || s > 59) return -1;
+    if (h == 24 && (m != 0 || s != 0)) return -1;   /* "24:00:00" = end of day */
+    return h * 3600 + m * 60 + s;
 }
 
 
@@ -179,20 +184,27 @@ void valve_sync_process(void *pvParameters)
             }
         }
 
-        /* ============================================================= */
+                /* ============================================================= */
         /* 5. SCHEDULE-BASED AUTO CONTROL                                */
         /* ============================================================= */
 
-        if (localServerData.schedule_control) {
+        time_t now;
+        struct tm timeinfo;
+        time(&now);
+        localtime_r(&now, &timeinfo);
 
-            time_t now;
-            struct tm timeinfo;
-            time(&now);
-            localtime_r(&now, &timeinfo);
+        /* No RTC on v2: until SNTP has synced, the clock says 1970 and every
+           schedule decision would be wrong - hold the valve instead. */
+        bool clock_ok = timeinfo.tm_year >= (2024 - 1900);
+        if (localServerData.schedule_control && !clock_ok) {
+            ESP_LOGW(TAG_SCHEDULE, "Clock not synced yet - schedule on hold");
+        }
+
+        if (localServerData.schedule_control && clock_ok) {
 
             const char *week_days[7] = {"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"};
             const char *today_str = week_days[timeinfo.tm_wday];
-            int current_minutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+            int current_seconds = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
 
             bool should_open = false;
 
@@ -201,23 +213,23 @@ void valve_sync_process(void *pvParameters)
 
                 if (sched->day[0] == '\0') continue;
 
-                // Apply if today or "Everyday"
+                // Apply if today or "Every day"
                 ESP_LOGI(TAG_SCHEDULE, "Checking schedule: %s, open: %s, close: %s\n", sched->day, sched->open, sched->close);
                 if (strcmp(sched->day, today_str) != 0 && strcmp(sched->day, "Every day") != 0) {
                     continue;
                 }
 
-                int open_minutes  = parse_time_str(sched->open);
-                int close_minutes = parse_time_str(sched->close);
-                ESP_LOGI(TAG_SCHEDULE, "Parsed times - Open: %d, Close: %d, Current: %d\n", open_minutes, close_minutes, current_minutes);
+                int open_seconds  = parse_time_str(sched->open);
+                int close_seconds = parse_time_str(sched->close);
+                ESP_LOGI(TAG_SCHEDULE, "Parsed times - Open: %d, Close: %d, Current: %d (sec)", open_seconds, close_seconds, current_seconds);
 
-                if (open_minutes < 0 || close_minutes < 0) continue;
+                if (open_seconds < 0 || close_seconds < 0) continue;
 
-                if (current_minutes >= open_minutes &&
-                    current_minutes < close_minutes) {
+                if (current_seconds >= open_seconds &&
+                    current_seconds < close_seconds) {
 
                     should_open = true;
-                    break;  // 🚀 IMPORTANT: stop checking further
+                    break;  // IMPORTANT: stop checking further
                 }
             }
 
@@ -249,10 +261,8 @@ void valve_sync_process(void *pvParameters)
 
                     xSemaphoreGive(valveMutex);
                 }
-   
 
                 valve_busy = false;
-                
             }
         }
 
