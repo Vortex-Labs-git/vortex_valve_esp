@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Vortex Valve v2</title>
+<style>
+/* No internet on the SoftAP — system fonts only, no webfont requests. */
+:root{
+  --scr:#131A1E; --c1:#1B242A; --c2:#232F36; --line:#2E3D45;
+  --fg:#E8EEF0; --fg2:#8FA1A8;
+  --copper:#C87F4A; --patina:#3FA796; --rust:#DD6152;
+  --r:14px;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--scr);color:var(--fg);font:15px/1.55 var(--ui);
+  -webkit-font-smoothing:antialiased}
+.hidden{display:none!important}
+
+/* ---------- chrome ---------- */
+header{position:sticky;top:0;z-index:5;background:var(--scr);
+  border-bottom:1px solid var(--line);padding:12px 14px;
+  display:flex;align-items:center;gap:9px}
+#back{width:28px;height:28px;flex:none;border-radius:8px;border:1px solid var(--line);
+  background:var(--c1);color:var(--fg);display:grid;place-items:center;
+  font-size:16px;line-height:1;cursor:pointer;padding:0}
+h1{margin:0;font-size:16px;font-weight:600;flex:1;letter-spacing:-.01em}
+#dot{width:8px;height:8px;border-radius:50%;background:var(--fg2);flex:none}
+#dot.on{background:var(--patina)}
+#did{font-family:var(--mono);font-size:10px;color:var(--fg2)}
+main{max-width:520px;margin:0 auto;padding:14px;display:flex;flex-direction:column;gap:14px}
+
+/* ---------- cards ---------- */
+.card{background:var(--c1);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px;display:flex;flex-direction:column;gap:12px}
+.ttl{margin:0;font-family:var(--mono);font-size:10px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--fg2);font-weight:400}
+
+/* ---------- state ---------- */
+.state{display:flex;align-items:center;gap:13px;padding:13px;border-radius:11px;
+  background:var(--c2);border-left:3px solid var(--fg2)}
+.state.op{border-left-color:var(--patina)}
+.state .ang{font-family:var(--mono);font-size:32px;font-weight:600;line-height:1;
+  font-variant-numeric:tabular-nums}
+.state .meta{display:flex;flex-direction:column;gap:3px;flex:1}
+.pill{align-self:flex-start;font-size:11px;font-weight:600;letter-spacing:.05em;
+  text-transform:uppercase;padding:3px 9px;border-radius:100px;
+  background:rgba(143,161,168,.14);color:var(--fg2);border:1px solid var(--line)}
+.pill.op{background:rgba(63,167,150,.16);color:var(--patina);border-color:rgba(63,167,150,.4)}
+.sub{font-size:11px;color:var(--fg2);font-family:var(--mono)}
+
+/* ---------- buttons ---------- */
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.btn{border:1px solid var(--line);background:var(--c2);color:var(--fg);
+  font:600 14px var(--ui);padding:12px 10px;border-radius:10px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:7px}
+.btn.prime{background:var(--copper);border-color:var(--copper);color:#12181A}
+.btn.op{border-color:rgba(63,167,150,.5);color:var(--patina)}
+.btn.danger{background:var(--rust);border-color:var(--rust);color:#160B0A}
+.btn.wide{grid-column:1/-1}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn .k{font-family:var(--mono);font-size:11px;opacity:.75}
+button:focus-visible,input:focus-visible{outline:2px solid var(--copper);outline-offset:2px}
+
+/* ---------- nav ---------- */
+.nav{display:flex;flex-direction:column;gap:9px}
+.navbtn{display:flex;align-items:center;gap:11px;background:var(--c1);
+  border:1px solid var(--line);border-radius:var(--r);padding:14px;cursor:pointer;
+  color:var(--fg);font-family:var(--ui);text-align:left;width:100%}
+.navbtn .ico{width:34px;height:34px;flex:none;border-radius:9px;background:var(--c2);
+  border:1px solid var(--line);display:grid;place-items:center;font-size:17px}
+.navbtn .txt{flex:1;display:flex;flex-direction:column}
+.navbtn .txt b{font-size:14px;font-weight:600}
+.navbtn .txt span{font-size:11.5px;color:var(--fg2)}
+.navbtn .arw{color:var(--fg2);font-size:17px}
+
+/* ---------- fields ---------- */
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;color:var(--fg2);font-family:var(--mono);
+  letter-spacing:.08em;text-transform:uppercase}
+.inp{background:var(--scr);border:1px solid var(--line);border-radius:9px;
+  padding:11px 12px;color:var(--fg);font:15px var(--ui);width:100%}
+.inp.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---------- limit switches ---------- */
+.limits{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.lim{background:var(--scr);border:1px solid var(--line);border-radius:11px;
+  padding:10px 11px;display:flex;flex-direction:column;gap:3px}
+.lim .h{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--fg2)}
+.lim .v{font-family:var(--mono);font-size:13px}
+.lim .v.on{color:var(--patina)}
+.lim .v.bad{color:var(--rust)}
+
+/* ---------- messages ---------- */
+.warn{font-size:11.5px;color:var(--fg2);line-height:1.45;
+  border-left:2px solid var(--copper);padding-left:9px;margin:0}
+.warn.bad{border-left-color:var(--rust);color:#F0A9A0}
+#err{background:#2A1416;border:1px solid #5B2226;color:#FCA5A5;border-radius:10px;
+  padding:10px 12px;font-size:13px}
+#toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,90px);
+  background:var(--c2);border:1px solid var(--line);border-radius:9px;
+  padding:10px 18px;font-size:14px;z-index:9;transition:transform .2s}
+#toast.show{transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+
+/* ---------- lock ---------- */
+#vLock{gap:16px;padding-top:40px}
+#vLock .mark{width:52px;height:52px;border-radius:14px;background:var(--c1);
+  border:1px solid var(--line);display:grid;place-items:center;font-size:23px}
+#vLock h2{margin:0;font-size:21px;font-weight:700;letter-spacing:-.015em}
+#vLock p{margin:0;font-size:13px;color:var(--fg2)}
+</style>
+</head>
+<body>
+
+<header>
+  <button id="back" class="hidden" aria-label="Back">&lsaquo;</button>
+  <div id="dot"></div>
+  <h1 id="title">Vortex Valve</h1>
+  <div id="did"></div>
+</header>
+
+<main>
+  <div id="err" class="hidden"></div>
+
+  <!-- ==================== PASSKEY ==================== -->
+  <section id="vLock">
+    <div class="mark">&#128274;</div>
+    <h2>Vortex Valve</h2>
+    <p>Enter the device passkey to continue.</p>
+    <div class="field">
+      <label for="pk">Passkey</label>
+      <input class="inp" id="pk" type="password" inputmode="numeric" autocomplete="off">
+    </div>
+    <button class="btn prime wide" id="btnLogin">Connect</button>
+  </section>
+
+  <!-- ==================== VALVE OPERATION ==================== -->
+  <section id="vValve" class="hidden" style="display:flex;flex-direction:column;gap:14px">
+
+    <div class="card">
+      <p class="ttl">Current state</p>
+      <div class="state" id="stBox">
+        <div class="ang" id="stAngle">&mdash;</div>
+        <div class="meta">
+          <span class="pill" id="stPill">&mdash;</span>
+          <span class="sub" id="stMode">&mdash;</span>
+        </div>
+      </div>
+      <div class="limits">
+        <div class="lim"><span class="h">Close limit</span><span class="v" id="lmClose">&mdash;</span></div>
+        <div class="lim"><span class="h">Open limit</span><span class="v" id="lmOpen">&mdash;</span></div>
+      </div>
+      <p class="warn hidden" id="stAuto">Manual control is ignored while schedule or sensor mode is on.</p>
+      <p class="warn bad hidden" id="stErr"></p>
+    </div>
+
+    <div class="card">
+      <p class="ttl">Control</p>
+      <div class="btns" id="modeState">
+        <button class="btn" id="btnClose">Close</button>
+        <button class="btn op" id="btnOpen">Open</button>
+      </div>
+      <p class="warn">v2 valve: open / close only (runs to the limit switch).</p>
+    </div>
+
+    <div class="nav">
+      <button class="navbtn" data-go="wifi">
+        <span class="ico">&#128246;</span>
+        <span class="txt"><b>WiFi Configuration</b><span>Join a router network</span></span>
+        <span class="arw">&rsaquo;</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ==================== WIFI ==================== -->
+  <section id="vWifi" class="hidden">
+    <div class="card">
+      <p class="ttl">Router credentials</p>
+      <div class="field">
+        <label for="wSsid">Router SSID</label>
+        <input class="inp" id="wSsid" type="text" autocomplete="off" autocapitalize="none">
+      </div>
+      <div class="field">
+        <label for="wPass">Password</label>
+        <input class="inp" id="wPass" type="password" autocomplete="off">
+      </div>
+      <button class="btn danger wide" id="btnWifi">Save &amp; restart</button>
+      <p class="warn bad">The device reboots as soon as this is saved. This page will disconnect.</p>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var ws = null, deviceId = "", authed = false, poll = null, retry = null;
+  var view = "lock";
+  var USER = "webui";
+
+  function $(id) { return document.getElementById(id); }
+
+  function toast(m) {
+    var t = $("toast");
+    t.textContent = m;
+    t.classList.add("show");
+    clearTimeout(t._h);
+    t._h = setTimeout(function () { t.classList.remove("show"); }, 2200);
+  }
+
+  function fail(m) {
+    var e = $("err");
+    e.textContent = m || "";
+    e.classList.toggle("hidden", !m);
+  }
+
+  /* ---------------- view routing (client side only) ---------------- */
+
+  var TITLES = {
+    lock:  "Vortex Valve",
+    valve: "Valve Operation",
+    wifi:  "WiFi Configuration"
+  };
+
+  function show(name) {
+    view = name;
+    $("vLock").classList.toggle("hidden", name !== "lock");
+    $("vValve").classList.toggle("hidden", name !== "valve");
+    $("vWifi").classList.toggle("hidden", name !== "wifi");
+
+    $("title").textContent = TITLES[name];
+    $("back").classList.toggle("hidden", name !== "wifi");
+
+    clearInterval(poll);
+    if (name === "valve") { refresh(); poll = setInterval(refresh, 2000); }
+  }
+
+  /* ---------------- websocket ---------------- */
+
+  function send(o) {
+    if (!ws || ws.readyState !== 1) { toast("Not connected"); return false; }
+    ws.send(JSON.stringify(o));
+    return true;
+  }
+
+  function connect() {
+    var key = $("pk").value;
+    if (!key) { fail("Enter the device passkey."); return; }
+    fail("");
+
+    clearTimeout(retry);
+    if (ws) { try { ws.close(); } catch (e) {} }
+
+    ws = new WebSocket("ws://" + location.host + "/ws");
+
+    ws.onopen = function () {
+      $("dot").classList.add("on");
+      send({ event: "request_device_info", passkey: key, user_id: USER });
+    };
+
+    ws.onmessage = function (ev) {
+      var m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      handle(m);
+    };
+
+    ws.onclose = function () {
+      $("dot").classList.remove("on");
+      authed = false;
+      clearInterval(poll);
+      if (deviceId) { retry = setTimeout(connect, 2000); }
+    };
+
+    ws.onerror = function () { fail("Connection failed. Are you on the Vortex_ WiFi?"); };
+  }
+
+  function handle(m) {
+    switch (m.event) {
+
+      case "device_info":
+        deviceId = m.device_id || "";
+        authed = true;
+        $("did").textContent = deviceId;
+        fail("");
+        if (view === "lock") { show("valve"); }
+        break;
+
+      case "valve_data": {
+        var v = m.get_valvedata || {}, c = m.get_controller || {};
+        var open = !!v.is_open, shut = !!v.is_close;
+
+        $("stAngle").textContent = open ? "90°" : (shut ? "0°" : "—");
+        $("stBox").classList.toggle("op", open);
+        $("stPill").classList.toggle("op", open);
+        $("stPill").textContent = open ? "Open" : (shut ? "Closed" : "Mid-travel");
+        $("stMode").textContent = "schedule " + (c.schedule ? "on" : "off") +
+                                  " · sensor " + (c.sensor ? "on" : "off");
+
+        $("stAuto").classList.toggle("hidden", !(c.schedule || c.sensor));
+
+        var l = m.get_limitdata || {};
+        limit($("lmClose"), l.is_close_limit, l.close_limit);
+        limit($("lmOpen"), l.is_open_limit, l.open_limit);
+
+        var e = m.Error || "";
+        $("stErr").textContent = e;
+        $("stErr").classList.toggle("hidden", !e);
+        break;
+      }
+
+    }
+  }
+
+  function limit(el, ok, clicked) {
+    el.classList.toggle("bad", !ok);
+    el.classList.toggle("on", !!ok && !!clicked);
+    el.textContent = !ok ? "fault" : (clicked ? "clicked" : "released");
+  }
+
+  /* ---------------- requests ---------------- */
+
+  function refresh() {
+    if (!authed) return;
+    send({ event: "device_basic_info", data: { user_id: USER, device_id: deviceId } });
+  }
+
+  function setAngle(a) {
+    if (send({ event: "set_valve_basic", valve_data: { set_angle: true, angle: a } })) {
+      toast(a > 0 ? "Opening…" : "Closing…");
+    }
+  }
+
+  /* ---------------- wiring ---------------- */
+
+  $("btnLogin").onclick = connect;
+  $("pk").addEventListener("keydown", function (e) { if (e.key === "Enter") connect(); });
+
+  $("back").onclick = function () { show("valve"); };
+  document.querySelectorAll("[data-go]").forEach(function (b) {
+    b.onclick = function () { show(b.dataset.go); };
+  });
+
+  $("btnClose").onclick = function () { setAngle(0); };
+  $("btnOpen").onclick = function () { setAngle(90); };
+  $("btnWifi").onclick = function () {
+    var s = $("wSsid").value, p = $("wPass").value;
+    if (!s) { toast("SSID is required"); return; }
+    if (!confirm("Save WiFi and restart the device?")) return;
+    if (send({ event: "set_valve_wifi", wifi_data: { ssid: s, password: p } })) {
+      toast("Saved — device restarting");
+      deviceId = "";          /* stop the auto-reconnect loop */
+      clearInterval(poll);
+    }
+  };
+
+  show("lock");
+})();
+</script>
+</body>
+</html>

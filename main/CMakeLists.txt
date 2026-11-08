@@ -5,6 +5,7 @@ idf_component_register(SRCS
                             "eeprom_fn/schedule_storage.c"
                             "websocket_fn/websocket_server_fn.c"
                             "websocket_fn/websocket_state_fn.c"
+                            "webui_fn/webui_server.c"
                             "time_fn/time_func.c"
                             "mqtt_fn/mqtt_client_fn.c"
                             "mqtt_fn/mqtt_state_fn.c"
@@ -18,6 +19,7 @@ idf_component_register(SRCS
                             "."
                         EMBED_TXTFILES
                             "mqtt_fn/ca_cert.pem"
+                            "webui_fn/index.html"
                         REQUIRES 
                             esp_wifi 
                             mqtt 
