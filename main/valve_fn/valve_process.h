@@ -12,6 +12,7 @@ extern LedIndicator redLED;
 extern LedIndicator greenLED;
 
 void init_valve_system(void);
+int valve_test(void); 
 int motor_open(void);
 int motor_close(void);
 int valve_set_position(int angle);

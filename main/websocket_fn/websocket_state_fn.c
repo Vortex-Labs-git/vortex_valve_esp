@@ -157,7 +157,7 @@ void offline_data(cJSON *event, cJSON *json) {
             cJSON *device_id = cJSON_GetObjectItem(data, "device_id");
             if (device_id != NULL && cJSON_IsString(device_id)) {
                 if (strcmp(device_id->valuestring, DEVICE_ID) == 0) {
-                    ESP_LOGW(TAG, "User send the correct device ID %s, user ID %s", device_id->valuestring, user_id->valuestring);
+                    ESP_LOGW(TAG, "User send the correct device ID %s, user ID %s", device_id->valuestring, cJSON_IsString(user_id) ? user_id->valuestring : "-");
                     send_device_data();
                     ESP_LOGW(TAG, "Send valve data");
                 } else {
@@ -172,7 +172,7 @@ void offline_data(cJSON *event, cJSON *json) {
     /*----------------- SET VALVE BASIC CONTROL -----------------*/
     } else if ( strcmp(event->valuestring, "set_valve_basic") == 0) {
         ESP_LOGI(TAG, "Event matched: set_valve_basic");
-        SetData localCopy;
+        SetData localCopy = {0};
 
         cJSON *valve_data = cJSON_GetObjectItem(json, "valve_data");
         if (valve_data != NULL && cJSON_IsObject(valve_data)) {
@@ -282,29 +282,31 @@ void process_message(const char *payload, bool *connection_authorized) {
     }
 
 
-    /*----------------- If Already Authorized -----------------*/
-    if ( *connection_authorized) {
-        offline_data( event, json);
-    } 
-    /*----------------- Authentication Phase -----------------*/
-    else {
-        if (strcmp(event->valuestring, "request_device_info") == 0) {
-            ESP_LOGI(TAG, "Event matched: request_device_info");
+    /*----------------- Authentication is always re-runnable -----------------*/
+    /* A returning client (page reload, app reconnect) opens a NEW socket and
+       re-sends request_device_info. Handle it before the authorized check,
+       or it is routed into offline_data() and never gets device_info. */
+    if (strcmp(event->valuestring, "request_device_info") == 0) {
+        ESP_LOGI(TAG, "Event matched: request_device_info");
 
-            cJSON *passkey   = cJSON_GetObjectItem(json, "passkey");
-            if ( cJSON_IsString(passkey) && (strcmp(passkey->valuestring, PASSKEY_VALUE) == 0)) {
-                *connection_authorized = true;
-                ESP_LOGI(TAG, "Passkey accept");
+        cJSON *passkey = cJSON_GetObjectItem(json, "passkey");
+        if (cJSON_IsString(passkey) && (strcmp(passkey->valuestring, PASSKEY_VALUE) == 0)) {
+            *connection_authorized = true;
+            ESP_LOGI(TAG, "Passkey accept");
 
-                send_device_info();
-                ESP_LOGI(TAG, "Send Device info");
-            } else {
-                *connection_authorized = false;
-                ESP_LOGI(TAG, "Passkey not accept");
-            }
+            send_device_info();
+            ESP_LOGI(TAG, "Send Device info");
         } else {
-            ESP_LOGW(TAG, "Connection not authorized");
+            *connection_authorized = false;
+            ESP_LOGI(TAG, "Passkey not accept");
         }
+    }
+    /*----------------- Everything else needs authorization -----------------*/
+    else if (*connection_authorized) {
+        offline_data(event, json);
+    }
+    else {
+        ESP_LOGW(TAG, "Connection not authorized");
     }
 
     // Free memory to prevent leaks

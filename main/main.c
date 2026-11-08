@@ -185,6 +185,12 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base, int32_t e
         ESP_LOGI(TAG_STA, "Router connected. Switching to STA Mode (Turning AP OFF)...");
         esp_wifi_set_mode(WIFI_MODE_STA);
 
+        /* AP just went down with the mode switch - any clients it had are gone,
+        and ESP-IDF will not emit AP_STADISCONNECTED for them. Clear the
+        counter or STA_DISCONNECTED will think the AP is still busy and
+        stop retrying the router. */
+        s_ap_client_count = 0;
+
         /* Stop Webserver if running */
         if (web_running) {
             stop_webserver();

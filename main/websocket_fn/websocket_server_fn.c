@@ -3,6 +3,7 @@
 
 #include "websocket_server_fn.h"
 #include "websocket_state_fn.h"
+#include "webui_fn/webui_server.h"
 
 
 /*---------------------------------------------------------------
@@ -21,6 +22,58 @@ static const char *TAG_WEBSERVER = "WEB SERVER";
 httpd_handle_t esp_server = NULL;
 
 
+
+#include <unistd.h>     /* close() — required once we override close_fn */
+
+#define MAX_WS_CLIENTS  8
+
+/* Authorization is per-socket, not per-server. A client that reconnects gets a
+   new sockfd and must pass the passkey again. */
+static int  s_auth_fds[MAX_WS_CLIENTS];
+static bool s_auth_init = false;
+
+static void ws_auth_reset_all(void)
+{
+    for (int i = 0; i < MAX_WS_CLIENTS; i++) s_auth_fds[i] = -1;
+    s_auth_init = true;
+}
+
+static bool ws_is_authorized(int fd)
+{
+    if (!s_auth_init) ws_auth_reset_all();
+    for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+        if (s_auth_fds[i] == fd) return true;
+    }
+    return false;
+}
+
+static void ws_set_authorized(int fd, bool yes)
+{
+    if (!s_auth_init) ws_auth_reset_all();
+
+    if (yes) {
+        for (int i = 0; i < MAX_WS_CLIENTS; i++) if (s_auth_fds[i] == fd) return;
+        for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+            if (s_auth_fds[i] == -1) { s_auth_fds[i] = fd; return; }
+        }
+        ESP_LOGW(TAG_WEBSERVER, "Auth table full, socket %d left unauthorized", fd);
+    } else {
+        for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+            if (s_auth_fds[i] == fd) s_auth_fds[i] = -1;
+        }
+    }
+}
+
+/* Called by httpd when a socket closes — including the half-open ones the app
+   leaves behind when it is force-stopped. */
+static void ws_close_fn(httpd_handle_t hd, int sockfd)
+{
+    ESP_LOGI(TAG_WEBSERVER, "Socket %d closed, clearing authorization", sockfd);
+    ws_set_authorized(sockfd, false);
+    close(sockfd);   /* overriding close_fn makes closing our responsibility */
+}
+
+
 /*===============================================================
  *                STOP WEB SERVER
  *==============================================================*/
@@ -34,6 +87,8 @@ void stop_webserver(void)
         httpd_stop(esp_server);
         esp_server = NULL;
         connection_authorized = false;
+
+        ws_auth_reset_all();
     }
 }
 
@@ -64,7 +119,6 @@ void websocket_async_send(void *arg)
             int client_fd = client_fds[i];
 
             // Only send if this socket is a WebSocket
-            // (Standard HTTP requests might be in this list too, but usually transient)
             if (httpd_ws_get_fd_info(esp_server, client_fd) == HTTPD_WS_CLIENT_WEBSOCKET) {
                 httpd_ws_frame_t ws_pkt;
                 memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
@@ -83,8 +137,6 @@ void websocket_async_send(void *arg)
 
 
 
-
-
 /*===============================================================
  *                WEBSOCKET REQUEST HANDLER
  *==============================================================*/
@@ -98,8 +150,11 @@ void websocket_async_send(void *arg)
  */
 static esp_err_t ws_handler(httpd_req_t *req)
 {
+    int fd = httpd_req_to_sockfd(req);
+
     /*----------------- WebSocket Handshake -----------------*/
     if (req->method == HTTP_GET) {
+        ws_set_authorized(fd, false);
         ESP_LOGI(TAG_WEBSERVER, "Handshake done, the new connection was opened");
         return ESP_OK;
     }
@@ -130,17 +185,17 @@ static esp_err_t ws_handler(httpd_req_t *req)
         // Receive the actual data
         ret = httpd_ws_recv_frame(req, &ws_pkt, ws_pkt.len);
         if (ret == ESP_OK) {
-            // json msg decode
-            process_message((char*)ws_pkt.payload, &connection_authorized);
+            bool authorized = ws_is_authorized(fd);
+            process_message((char*)ws_pkt.payload, &authorized);
+            ws_set_authorized(fd, authorized);
         }
-        
+
         ESP_LOGI(TAG_WEBSERVER, "Got packet with message: %s", ws_pkt.payload);
     }
     
     if (buf) free(buf);
     return ret;
 }
-
 
 
 
@@ -152,8 +207,8 @@ static esp_err_t ws_handler(httpd_req_t *req)
  * @brief Initialize and start HTTP + WebSocket server.
  * 
  * Registers:
- *    URI: /ws
- *    Type: WebSocket
+ *    URI: /ws   (WebSocket)
+ *    URI: /     (browser config page)
  */
 httpd_handle_t start_webserver(void)
 {
@@ -162,8 +217,11 @@ httpd_handle_t start_webserver(void)
         return esp_server;
     }
 
+    ws_auth_reset_all();
+
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.lru_purge_enable = true; // Auto close old connections if full
+    config.close_fn         = ws_close_fn; 
 
     // Start the httpd server
     ESP_LOGI(TAG_WEBSERVER, "Starting server on port: '%d'", config.server_port);
@@ -179,11 +237,11 @@ httpd_handle_t start_webserver(void)
             .is_websocket = true
         };
         httpd_register_uri_handler(esp_server, &ws);
+
+        webui_register(esp_server);
         return esp_server;
     }
 
     ESP_LOGI(TAG_WEBSERVER, "Error starting server!");
     return NULL;
 }
-
-

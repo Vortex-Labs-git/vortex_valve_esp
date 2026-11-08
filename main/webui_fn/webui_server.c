@@ -11,9 +11,6 @@
  *      device_basic_info       -> poll valve status
  *      set_valve_basic         -> open / close / set angle
  *      set_valve_wifi          -> WiFi provisioning (device restarts)
- *      get_motor_calibration   -> read pot / limit values
- *      set_motor_calibration   -> store pot end-stops
- *      set_motor_rotation      -> jog the motor while calibrating
  *
  * Because authorization is per-socket (see websocket_server_fn.c), a browser
  * and the mobile app can be connected at the same time without interfering.
