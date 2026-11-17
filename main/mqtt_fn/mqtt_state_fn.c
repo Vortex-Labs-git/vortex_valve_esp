@@ -10,10 +10,22 @@
 #include "ota_fn/ota_update_fn.h"
 #include "mqtt_state_fn.h"
 #include "eeprom_fn/schedule_storage.h"
+#include "log_fn/device_log.h"
 
 
 
 static const char *TAG = "MQTT_STATE";
+
+/* Device log: last mode received from the server (-1 = none yet) */
+static int last_logged_mode = -1;
+
+static const char *mode_text(int mode) {
+    switch (mode) {
+        case 2:  return "Automatic (sensor)";
+        case 1:  return "Automatic (schedule)";
+        default: return "Manual";
+    }
+}
 
 
 
@@ -55,6 +67,14 @@ void mqtt_handle_cmd_data(const char *data) {
         if (cJSON_IsBool(schedule) && cJSON_IsBool(sensor)) {
             localCopy.schedule_control = cJSON_IsTrue(schedule);
             localCopy.sensor_control = cJSON_IsTrue(sensor);
+
+            int mode = localCopy.sensor_control ? 2 : (localCopy.schedule_control ? 1 : 0);
+            if (last_logged_mode < 0) {
+                DLOG_INFO("Mode: %s", mode_text(mode));
+            } else if (mode != last_logged_mode) {
+                DLOG_INFO("Mode changed to %s", mode_text(mode));
+            }
+            last_logged_mode = mode;
         }
     }
 

@@ -27,6 +27,7 @@
 #include "eeprom_fn/schedule_storage.h" 
 
 #include "main_fn/main_process.h"
+#include "log_fn/device_log.h"
 
 /**
  * @brief Task execution period in milliseconds
@@ -41,6 +42,16 @@
  * while another one is still being processed.
  */
 static bool valve_busy = false;
+
+/**
+ * @brief Device log state for the linked sensor (online/offline changes)
+ *        -1 = not known yet. Nothing is logged in the first
+ *        SENSOR_LOG_GRACE_SEC after sensor mode starts (data still arriving).
+ */
+#define SENSOR_LOG_GRACE_SEC    30
+static int        sensor_log_online = -1;
+static TickType_t sensor_mode_since = 0;
+static bool       sensor_mode_on    = false;
 
 
 /**
@@ -250,6 +261,7 @@ void valve_sync_process(void *pvParameters)
                 valve_busy = true;
 
                 int err_code = 0;
+                bool moved = false;
 
                 /**
                  * Execute motor movement based on requested angle
@@ -260,6 +272,7 @@ void valve_sync_process(void *pvParameters)
                 float current_angle = pot_to_angle(&potentiometer, adc);
                 if (fabs(localServerData.angle - current_angle) >= tolerance) {
                     err_code = motor_set_angle(localServerData.angle);
+                    moved = true;
                 }
                 
                 /* ===================================================== */
@@ -284,6 +297,10 @@ void valve_sync_process(void *pvParameters)
                     sprintf(valveData.error_msg, "Failed to set angle to %d, error code: %d", localServerData.angle, err_code);
                 }
                 xSemaphoreGive(valveMutex);
+
+                if (moved && err_code == 0) {
+                    DLOG_INFO("Manual: valve moved to %d°", localServerData.angle);
+                }
 
                 valve_busy = false;
             }
@@ -316,6 +333,7 @@ void valve_sync_process(void *pvParameters)
 
             int  target_angle = 0;
             bool matched      = false;
+            ScheduleInfo matched_slot = { 0 };   /* for the device log */
             
             xSemaphoreTake(scheduleMutex, portMAX_DELAY);
             for (int i = 0; i < 10; i++) {
@@ -338,6 +356,7 @@ void valve_sync_process(void *pvParameters)
                 if (current_seconds >= open_seconds && current_seconds < close_seconds) {
                     target_angle = sched->angle;
                     matched      = true;
+                    matched_slot = *sched;
                     break;  // IMPORTANT: stop checking further
                 }
             }
@@ -370,6 +389,15 @@ void valve_sync_process(void *pvParameters)
                 }
                 xSemaphoreGive(valveMutex);
 
+                if (err_code == 0) {
+                    if (matched) {
+                        DLOG_INFO("Schedule: valve moved to %d° (%s %s-%s)", target_angle,
+                                  matched_slot.day, matched_slot.open, matched_slot.close);
+                    } else {
+                        DLOG_INFO("Schedule: no active slot, valve moved to %d°", target_angle);
+                    }
+                }
+
                 valve_busy = false;
             }
         } else {
@@ -382,6 +410,12 @@ void valve_sync_process(void *pvParameters)
         /* ============================================================= */
 
         if (localServerData.sensor_control) {
+
+            if (!sensor_mode_on) {
+                sensor_mode_on    = true;
+                sensor_mode_since = xTaskGetTickCount();
+                sensor_log_online = -1;
+            }
 
             /* --- 6.1 Private copy of the sensor config + latest reading --- */
             SensorRule rules[10];
@@ -424,15 +458,30 @@ void valve_sync_process(void *pvParameters)
                 }
             }
 
+            /* Device log: linked sensor went offline / came back */
+            if ((uint32_t)((xTaskGetTickCount() - sensor_mode_since) / configTICK_RATE_HZ) >= SENSOR_LOG_GRACE_SEC) {
+                int online_now = sensor_online ? 1 : 0;
+                if (online_now != sensor_log_online) {
+                    if (!sensor_online) {
+                        DLOG_WARN("Linked sensor %s offline", sdata.sensor_id[0] ? sdata.sensor_id : "-");
+                    } else if (sensor_log_online == 0) {
+                        DLOG_INFO("Linked sensor %s back online", sdata.sensor_id);
+                    }
+                    sensor_log_online = online_now;
+                }
+            }
+
             /* --- 6.3 Decide the target angle --------------------------- */
             /*   offline                -> fail safe (close)               */
             /*   value <= 0             -> no action, hold position        */
             /*   value inside a rule    -> that rule's angle               */
             /*   value outside all rules-> fail safe (close)               */
             int target_angle = -1;   /* -1 = no command this cycle */
+            char move_reason[64] = "";  /* for the device log */
 
             if (!sensor_online) {
                 target_angle = SENSOR_FAILSAFE_ANGLE;
+                snprintf(move_reason, sizeof(move_reason), "sensor offline, fail safe");
                 ESP_LOGW(TAG_SENSOR, "Sensor offline -> closing valve (fail safe)");
             }
             else if (sdata.sensor_value <= 0.0f) {
@@ -444,6 +493,7 @@ void valve_sync_process(void *pvParameters)
                 float value = roundf(raw);
 
                 ESP_LOGI(TAG_SENSOR, "Sensor raw %.2f -> matching as %.0f", raw, value);
+                snprintf(move_reason, sizeof(move_reason), "value %.1f", raw);
 
                 /* Pass 1: half-open [low, high) so "0-30" and "30-60" don't
                    both claim the value 30. */
@@ -470,6 +520,7 @@ void valve_sync_process(void *pvParameters)
 
                 if (target_angle < 0) {
                     target_angle = SENSOR_FAILSAFE_ANGLE;
+                    snprintf(move_reason, sizeof(move_reason), "value %.1f matches no rule", raw);
                     ESP_LOGW(TAG_SENSOR,
                              "Sensor value %.2f matches no rule (%d rule(s)) -> closing valve",
                              value, rule_count);
@@ -507,6 +558,11 @@ void valve_sync_process(void *pvParameters)
                     }
                     xSemaphoreGive(valveMutex);
 
+                    if (err_code == 0) {
+                        DLOG_INFO("Sensor %s: valve moved to %d° (%s)",
+                                  sdata.sensor_id[0] ? sdata.sensor_id : "-", target_angle, move_reason);
+                    }
+
                     valve_busy = false;
                 }
             }
@@ -515,6 +571,7 @@ void valve_sync_process(void *pvParameters)
             }
 
         } else {
+            sensor_mode_on = false;
             ESP_LOGI(TAG_SYNC, "Sensor mode disable");
         }
 
@@ -604,6 +661,12 @@ void schedule_save_task(void *pvParameters) {
         if (schedule_changed) {
             if (schedule_storage_save(schedule_copy, MAX_SCHEDULES) == ESP_OK) {
                 ESP_LOGI(TAG_SCHEDULE,"SCHEDULE_TASK: Schedule saved to NVS\n");
+
+                int slots = 0;
+                for (int i = 0; i < MAX_SCHEDULES; i++) {
+                    if (schedule_copy[i].day[0] != '\0') slots++;
+                }
+                DLOG_INFO("Schedule updated (%d slot%s)", slots, slots == 1 ? "" : "s");
                 xSemaphoreTake(scheduleMutex, portMAX_DELAY);
                 memcpy(loaded_schedule, schedule_copy, sizeof(loaded_schedule));
                 xSemaphoreGive(scheduleMutex);

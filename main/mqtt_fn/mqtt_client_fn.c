@@ -8,6 +8,7 @@
 #include "mqtt_client_fn.h"
 #include "mqtt_state_fn.h"
 #include "ota_fn/ota_update_fn.h"
+#include "log_fn/device_log.h"
 
 
 /*---------------------------------------------------------------
@@ -29,6 +30,10 @@ static const char *TAG = "MQTT_CLIENT";
 static esp_mqtt_client_handle_t mqtt_client;
 static bool mqtt_connected = false;
 static TaskHandle_t mqtt_pub_task_handle = NULL;
+
+// Device log: an outage shorter than this is not logged
+#define RECONNECT_LOG_MIN_SEC   60
+static TickType_t disconnected_at = 0;
 
 /*---------------------------------------------------------------
  * TLS Certificate (Embedded in binary)
@@ -130,6 +135,52 @@ void mqtt_publish_valve_data( void)
     cJSON_Delete(valve_state_data);
     cJSON_Delete(valve_status);
     cJSON_Delete(valve_error);
+
+    // Send queued main-process logs
+    mqtt_publish_device_logs();
+}
+
+
+
+/*===============================================================
+ *              PUBLISH DEVICE LOG (main process events)
+ *==============================================================*/
+
+/**
+ * @brief Send queued device_log() entries to <base_topic>/log.
+ *        An entry stays queued until it is handed to the MQTT client.
+ */
+void mqtt_publish_device_logs(void)
+{
+    if (mqtt_client == NULL || !mqtt_connected) return;
+
+    char full_topic[128];
+    snprintf(full_topic, sizeof(full_topic), "%s/log", base_topic);
+
+    DeviceLogEntry entry;
+    for (int i = 0; i < 5 && device_log_peek(&entry); i++) {
+        cJSON *json = cJSON_CreateObject();
+        if (json == NULL) return;
+
+        cJSON_AddStringToObject(json, "event", "valve_log");
+        cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
+        cJSON_AddStringToObject(json, "timestamp", entry.timestamp);
+        cJSON_AddStringToObject(json, "level", entry.level);
+        cJSON_AddStringToObject(json, "msg", entry.msg);
+
+        char *json_str = cJSON_PrintUnformatted(json);
+        cJSON_Delete(json);
+        if (json_str == NULL) return;
+
+        int msg_id = esp_mqtt_client_publish(mqtt_client, full_topic, json_str, 0, 1, 0);
+        free(json_str);
+
+        if (msg_id < 0) {
+            ESP_LOGW(TAG, "Device log publish failed, will retry");
+            return;
+        }
+        device_log_drop();
+    }
 }
 
 
@@ -184,6 +235,15 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
             ESP_LOGI(TAG, "MQTT connected");
             mqtt_connected = true;
 
+            if (disconnected_at != 0) {
+                uint32_t off_sec = (uint32_t)((xTaskGetTickCount() - disconnected_at) / configTICK_RATE_HZ);
+                if (off_sec >= RECONNECT_LOG_MIN_SEC) {
+                    DLOG_WARN("Reconnected to server after %lum %lus offline",
+                              (unsigned long)(off_sec / 60), (unsigned long)(off_sec % 60));
+                }
+                disconnected_at = 0;
+            }
+
             // Broker reachable => WiFi, TLS, and auth all work on this build. Confirm the firmware so the bootloader stops arming rollback. No-op unless the partition is PENDING_VERIFY
             ota_confirm_running_firmware();
 
@@ -205,6 +265,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
         case MQTT_EVENT_DISCONNECTED:
             ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
+            if (mqtt_connected) {
+                disconnected_at = xTaskGetTickCount();
+                if (disconnected_at == 0) disconnected_at = 1;
+            }
             mqtt_connected = false;
             break;
 
@@ -380,6 +444,13 @@ void stop_mqtt_client(void)
 
         mqtt_client = NULL;  
     }
+
+    // Outage start for the "Reconnected to server" device log
+    if (mqtt_connected) {
+        disconnected_at = xTaskGetTickCount();
+        if (disconnected_at == 0) disconnected_at = 1;
+    }
+    mqtt_connected = false;
 
     // Delete the valve data publishing task
     if (mqtt_pub_task_handle != NULL) {
