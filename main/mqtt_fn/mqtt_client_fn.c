@@ -147,7 +147,8 @@ void mqtt_publish_valve_data( void)
  *==============================================================*/
 
 /**
- * @brief Send queued device_log() entries to <base_topic>/log.
+ * @brief Send queued device_log() entries on <base_topic>/error
+ *        (same topic as the error state, "event":"valve_log").
  *        An entry stays queued until it is handed to the MQTT client.
  */
 void mqtt_publish_device_logs(void)
@@ -155,7 +156,7 @@ void mqtt_publish_device_logs(void)
     if (mqtt_client == NULL || !mqtt_connected) return;
 
     char full_topic[128];
-    snprintf(full_topic, sizeof(full_topic), "%s/log", base_topic);
+    snprintf(full_topic, sizeof(full_topic), "%s/error", base_topic);
 
     DeviceLogEntry entry;
     for (int i = 0; i < 5 && device_log_peek(&entry); i++) {
