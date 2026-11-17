@@ -32,7 +32,7 @@ static const char *TAG = "STATE UPDATE OFFLINE";
 void send_device_info(void) {
     if (esp_server == NULL) return;
 
-    char timestamp[20];
+    char timestamp[32];   // "YYYY-MM-DDTHH:MM:SS+0530" needs 25
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     // Create the JSON object
