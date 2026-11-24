@@ -167,7 +167,7 @@ static void ota_task(void *pvParameter) {
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "OTA success, rebooting...");
             vTaskDelay(pdMS_TO_TICKS(1500));
-            char reason[48];
+            char reason[64];
             snprintf(reason, sizeof(reason), "firmware update to v%s", req->version);
             device_restart(reason);
         } else {

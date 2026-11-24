@@ -33,7 +33,7 @@ typedef struct {
     uint32_t       count;
     uint32_t       next_seq;
     uint32_t       seq[DEVICE_LOG_BUF_LEN];
-    char           restart_reason[48];    /* set by device_restart() */
+    char           restart_reason[64];    /* set by device_restart() */
     DeviceLogEntry entries[DEVICE_LOG_BUF_LEN];
 } LogStore;
 
