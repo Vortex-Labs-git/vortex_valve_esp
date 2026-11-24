@@ -16,6 +16,7 @@
 #include "global_fn/global_var.h"
 
 #include "schedule_storage.h" 
+#include "log_fn/device_log.h"
 
 /* ======================================================================== */
 /* ========================== NVS CONFIGURATION =========================== */
@@ -37,6 +38,46 @@
  * @brief Logging tag
  */
 static const char *TAG_SCHEDULE = "schedule_storage";
+
+
+/**
+ * @brief Device log: one line with the saved schedule
+ *        e.g. "Schedule updated: Mon 08:00-08:20 90°, Daily 18:00-18:30 45°"
+ */
+static void log_schedule_saved(const ScheduleInfo *list, size_t count)
+{
+    char text[DEVICE_LOG_MSG_LEN];
+    int  len = snprintf(text, sizeof(text), "Schedule updated:");
+    int  total = 0, shown = 0;
+    bool full = false;
+
+    for (size_t i = 0; i < count; i++) {
+        if (list[i].day[0] == '\0') continue;
+        total++;
+        if (full) continue;
+
+        char item[48];
+        const char *day = (strcmp(list[i].day, "Every day") == 0) ? "Daily" : list[i].day;
+        int n = snprintf(item, sizeof(item), "%s%.3s %.5s-%.5s %d°",
+                         shown ? ", " : " ", day, list[i].open, list[i].close, list[i].angle);
+
+        if (len + n >= (int)sizeof(text) - 12) {     /* keep room for " (+N more)" */
+            full = true;
+            continue;
+        }
+        len += snprintf(text + len, sizeof(text) - len, "%s", item);
+        shown++;
+    }
+
+    if (total == 0) {
+        DLOG_INFO("Schedule cleared");
+    } else {
+        if (shown < total) {
+            snprintf(text + len, sizeof(text) - len, " (+%d more)", total - shown);
+        }
+        DLOG_INFO("%s", text);
+    }
+}
 
 
 /* ======================================================================== */
@@ -97,6 +138,10 @@ esp_err_t schedule_storage_save(ScheduleInfo *scheList, size_t listSize)
      * Close NVS handle
      */
     nvs_close(handle);
+
+    if (err == ESP_OK) {
+        log_schedule_saved(scheList, listSize);
+    }
 
     return err;
 }
@@ -245,6 +290,10 @@ esp_err_t schedule_set_enable_save(bool enable)
 
     err = nvs_commit(handle);
     nvs_close(handle);
+
+    if (err == ESP_OK) {
+        DLOG_INFO("Schedule mode %s", enable ? "on" : "off");
+    }
 
     return err;
 }

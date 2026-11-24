@@ -10,6 +10,7 @@
 
 #include "encoder_storage.h"
 #include "global_fn/global_var.h" 
+#include "log_fn/device_log.h"
 
 /* ===================== NVS CONFIG ===================== */
 
@@ -43,6 +44,8 @@ esp_err_t valve_calib_save(ValveCalib *calib)
 
     if (err == ESP_OK) {
         ESP_LOGI(TAG, "Calibration saved");
+
+        DLOG_INFO("Motor calibration updated: close %.0f, open %.0f", calib->close_limit_encode, calib->open_limit_encode);
     } else {
         ESP_LOGE(TAG, "Commit failed");
     }
