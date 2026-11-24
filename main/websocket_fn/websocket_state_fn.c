@@ -10,6 +10,7 @@
 #include "eeprom_fn/wifi_storage.h"
 #include "eeprom_fn/encoder_storage.h"
 #include "valve_fn/valve_process.h"
+#include "log_fn/device_log.h"
 
 
 
@@ -32,7 +33,7 @@ static const char *TAG = "STATE UPDATE OFFLINE";
 void send_device_info(void) {
     if (esp_server == NULL) return;
 
-    char timestamp[20];
+    char timestamp[32];
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     // Create the JSON object
@@ -275,7 +276,8 @@ void offline_data(cJSON *event, cJSON *json) {
                 wifi_storage_save();
 
                 ESP_LOGI(TAG, "WiFi updated. Restarting...");
-                esp_restart();
+                // esp_restart();
+                device_restart("WiFi updated");
 
             } else {
                 ESP_LOGI(TAG, "WiFi data unchanged. No action taken.");

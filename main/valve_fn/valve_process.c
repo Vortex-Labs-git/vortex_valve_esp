@@ -12,6 +12,7 @@
 #include "limit_switch.h"
 #include "pot_read.h"
 #include "valve_process.h"
+#include "log_fn/device_log.h"
 
 
 /* =================== PIN CONFIGURATION =================== */
@@ -297,6 +298,11 @@ int motor_set_angle( int target_angle) {
     }
 
     led_off(&redLED);
+
+    /* Device log: valve operation, end event only */
+    if (target_angle >= 88)      DLOG_INFO("Valve opened");
+    else if (target_angle <= 2)  DLOG_INFO("Valve closed");
+    else                         DLOG_INFO("Valve set to %d°", target_angle);
 
     return 0;
 }

@@ -7,6 +7,8 @@
 #include "esp_log.h"
 #include "esp_system.h"
 
+#include "log_fn/device_log.h"
+
 static const char *TAG = "WIFI_SUP______TASK";
 
 #define SUPERVISOR_PERIOD_MS   30000
@@ -79,7 +81,9 @@ static void wifi_supervisor_task(void *arg)
             if (wifi_sup_valve_idle()) {
                 ESP_LOGE(TAG, "offline ~20 min — rebooting");
                 vTaskDelay(pdMS_TO_TICKS(200));  // let the log flush
-                esp_restart();
+                // esp_restart();
+
+                device_restart("WiFi offline 20 min");
             } else {
                 ESP_LOGW(TAG, "reboot deferred — valve is active");
             }
