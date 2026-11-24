@@ -327,7 +327,7 @@ void mqtt_handle_topic(const char *data) {
 cJSON* create_valve_status() {
     cJSON *json = cJSON_CreateObject();
 
-    char timestamp[20];
+    char timestamp[32];   // "YYYY-MM-DDTHH:MM:SS+0530" needs 25
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     cJSON_AddStringToObject(json, "event", "valve_status");
@@ -363,7 +363,7 @@ cJSON* create_valve_state_data() {
 
     cJSON *json = cJSON_CreateObject();
 
-    char timestamp[20];
+    char timestamp[32];   // "YYYY-MM-DDTHH:MM:SS+0530" needs 25
     get_current_timestamp(timestamp, sizeof(timestamp));
 
     cJSON_AddStringToObject(json, "event", "valve_basic_data");
@@ -394,25 +394,24 @@ cJSON* create_valve_state_data() {
 
 
 /*===============================================================
- *              CREATE JSON: VALVE ERROR
+ *              CREATE JSON: VALVE LOG (error / warn / info)
  *==============================================================*/
 
 /**
- * @brief Create JSON object for error reporting
+ * @brief Create JSON object for one device log entry (sent on .../error)
+ *        The timestamp is the time the event happened, not the send time.
  */
-cJSON* create_valve_error() {
+cJSON* create_valve_log(const DeviceLogEntry *entry) {
+    if (entry == NULL) return NULL;
+
     cJSON *json = cJSON_CreateObject();
+    if (json == NULL) return NULL;
 
-    char timestamp[20];
-    get_current_timestamp(timestamp, sizeof(timestamp));
-
-    cJSON_AddStringToObject(json, "event", "valve_error");
-    cJSON_AddStringToObject(json, "timestamp", timestamp);
+    cJSON_AddStringToObject(json, "event", "valve_log");
+    cJSON_AddStringToObject(json, "timestamp", entry->timestamp);
     cJSON_AddStringToObject(json, "device_id", deviceIdentity.device_id);
-
-    xSemaphoreTake(valveMutex, portMAX_DELAY);
-    cJSON_AddStringToObject(json, "error", valveData.error_msg);
-    xSemaphoreGive(valveMutex);
+    cJSON_AddStringToObject(json, "level", entry->level);
+    cJSON_AddStringToObject(json, "msg", entry->msg);
 
     return json;
 }

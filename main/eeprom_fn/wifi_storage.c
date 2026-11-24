@@ -16,6 +16,7 @@
 #include "esp_log.h"
 
 #include "wifi_storage.h"
+#include "log_fn/device_log.h"
 
 /* ======================================================================== */
 /* ========================== CONFIGURATION =============================== */
@@ -163,6 +164,13 @@ esp_err_t wifi_storage_save(void)
         ESP_LOGE(TAG_WIFI, "NVS commit failed (%s)", esp_err_to_name(err));
     } else {
         ESP_LOGI(TAG_WIFI, "WiFi saved to NVS");
+
+        /* Device log (the password is never logged) */
+        if (wifiStaData.set_wifi) {
+            DLOG_INFO("WiFi updated: SSID %s", wifiStaData.ssid);
+        } else {
+            DLOG_INFO("WiFi reset to default: SSID %s", wifiStaData.ssid);
+        }
     }
 
     nvs_close(handle);

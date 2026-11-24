@@ -50,8 +50,7 @@
 #include "test_fn/test_process.h"
 #include "wifi_supervisor.h"
 #include "log_fn/device_log.h"
-#include "esp_system.h"
-#include "esp_app_desc.h"
+#include "log_fn/log_task.h"
 
 
 
@@ -94,21 +93,6 @@ static int s_ap_client_count = 0;
 static bool router_connected = false;
 static bool mqtt_running = false;
 static bool web_running = false;
-
-static const char *reset_reason_text(void) {
-    switch (esp_reset_reason()) {
-        case ESP_RST_POWERON:   return "power on";
-        case ESP_RST_SW:        return "restart";
-        case ESP_RST_PANIC:     return "crash";
-        case ESP_RST_INT_WDT:
-        case ESP_RST_TASK_WDT:
-        case ESP_RST_WDT:       return "watchdog";
-        case ESP_RST_BROWNOUT:  return "low power";
-        case ESP_RST_DEEPSLEEP: return "deep sleep";
-        case ESP_RST_EXT:       return "reset pin";
-        default:                return "unknown";
-    }
-}
 
 
 /* ======================================================================== */
@@ -467,9 +451,8 @@ void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
 
-    // Device log queue (sent to the server once MQTT connects)
+    // Device log: keeps unsent logs from before a restart, logs the restart reason
     device_log_init();
-    DLOG_INFO("Device started (v%s, %s)", esp_app_get_description()->version, reset_reason_text());
 
 
     id_storage_load();
@@ -510,6 +493,8 @@ void app_main(void) {
 
 
     wifi_init_smart_mode();
+
+    log_task_start();
 
     xTaskCreate(schedule_save_task, "schedule_save_task", 4096, NULL, 5, NULL);
 

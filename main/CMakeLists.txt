@@ -18,6 +18,8 @@ idf_component_register(SRCS
                             "valve_fn/pot_read.c"
                             "valve_fn/valve_process.c"
                             "main_fn/main_process.c"
+                            "log_fn/device_log.c"
+                            "log_fn/log_task.c"
                             "webui_fn/webui_server.c"
                             "test_fn/test_process.c"
                         INCLUDE_DIRS 

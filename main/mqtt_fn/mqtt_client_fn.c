@@ -44,30 +44,31 @@ extern const uint8_t _binary_ca_cert_pem_end[];
 /**
  * @brief Publish a JSON message to a given sub-topic
  *
- * @param sub_topic  Sub-topic (e.g., "status", "state_data")
+ * @param sub_topic  Sub-topic (e.g., "status", "state_data", "error")
  * @param message    cJSON object to publish
+ * @return true when handed to the MQTT client
  */
-static void mqtt_publish_message(const char *sub_topic, cJSON *message)
+bool mqtt_publish_message(const char *sub_topic, cJSON *message)
 {
     if (mqtt_client == NULL) {
         ESP_LOGE(TAG, "MQTT client not initialized");
-        return;
+        return false;
     }
 
     if (!mqtt_connected) {
         ESP_LOGW(TAG, "MQTT not connected, skipping publish");
-        return;
+        return false;
     }
 
     if (message == NULL || sub_topic == NULL) {
         ESP_LOGE(TAG, "Invalid publish arguments");
-        return;
+        return false;
     }
 
     char *json_str = cJSON_PrintUnformatted(message);
     if (json_str == NULL) {
         ESP_LOGE(TAG, "Failed to serialize JSON");
-        return;
+        return false;
     }
 
     // Construct full topic:
@@ -85,6 +86,16 @@ static void mqtt_publish_message(const char *sub_topic, cJSON *message)
     }
 
     free(json_str);
+    return msg_id >= 0;
+}
+
+
+/**
+ * @brief true while the MQTT client is connected to the broker
+ */
+bool mqtt_is_connected(void)
+{
+    return mqtt_client != NULL && mqtt_connected;
 }
 
 
@@ -96,7 +107,7 @@ static void mqtt_publish_message(const char *sub_topic, cJSON *message)
  * @brief Publish all valve-related data:
  *        - state_data
  *        - status
- *        - error
+ *        (errors and events are sent by log_fn/log_task.c when they happen)
  */
 void mqtt_publish_valve_data( void) 
 {
@@ -118,18 +129,8 @@ void mqtt_publish_valve_data( void)
         // ESP_LOGI(TAG, "Valve status published");
     }
 
-    // Create and publish error data
-    cJSON *valve_error = create_valve_error();
-    if (valve_error == NULL) {
-        ESP_LOGE(TAG, "Failed to create valve error");
-    } else {
-        mqtt_publish_message("error", valve_error);
-        // ESP_LOGI(TAG, "Valve error published");
-    }
-
     cJSON_Delete(valve_state_data);
     cJSON_Delete(valve_status);
-    cJSON_Delete(valve_error);
 }
 
 

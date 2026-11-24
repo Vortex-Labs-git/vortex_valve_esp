@@ -11,6 +11,7 @@
 #include "global_fn/global_var.h"
 #include "valve_fn/led_indicators.h"
 #include "valve_fn/valve_process.h"
+#include "log_fn/device_log.h"
 
 static const char *TAG = "OTA_UPDATE";
 
@@ -26,6 +27,16 @@ typedef struct {
 } OtaRequest;
 
 static bool ota_running = false;
+
+/* Device log: the server repeats a failed OTA request every 5 s,
+   so start/fail are logged once per requested version */
+static char ota_failed_version[32] = "";
+
+static void ota_log_failed(const char *version, esp_err_t err) {
+    if (strcmp(ota_failed_version, version) == 0) return;
+    strlcpy(ota_failed_version, version, sizeof(ota_failed_version));
+    DLOG_ERROR("Firmware update to v%s failed: %s", version, esp_err_to_name(err));
+}
 
 
 /*===============================================================
@@ -108,6 +119,9 @@ static void ota_task(void *pvParameter) {
     /*----------------- 3. Start HTTPS Download -----------------*/
     ota_running = true;
     ESP_LOGI(TAG, "Starting OTA from: %s", req->url);
+    if (strcmp(ota_failed_version, req->version) != 0) {
+        DLOG_INFO("Firmware update started: v%s -> v%s", running_app->version, req->version);
+    }
     led_blink2(&redLED, 1000, 1000);
 
     esp_http_client_config_t http_config = {
@@ -124,6 +138,7 @@ static void ota_task(void *pvParameter) {
     esp_err_t err = esp_https_ota_begin(&ota_config, &handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "OTA begin failed: %s", esp_err_to_name(err));
+        ota_log_failed(req->version, err);
         ota_running = false;
         goto cleanup;
     }
@@ -152,13 +167,17 @@ static void ota_task(void *pvParameter) {
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "OTA success, rebooting...");
             vTaskDelay(pdMS_TO_TICKS(1500));
-            esp_restart();
+            char reason[48];
+            snprintf(reason, sizeof(reason), "firmware update to v%s", req->version);
+            device_restart(reason);
         } else {
             ESP_LOGE(TAG, "OTA finish failed: %s", esp_err_to_name(err));
+            ota_log_failed(req->version, err);
         }
     } else {
         esp_https_ota_abort(handle);
         ESP_LOGE(TAG, "OTA failed: %s", esp_err_to_name(err));
+        ota_log_failed(req->version, err);
     }
 
     ota_running = false;
@@ -239,6 +258,7 @@ void ota_confirm_running_firmware(void)
             esp_err_t merr = esp_ota_mark_app_valid_cancel_rollback();
             if (merr == ESP_OK) {
                 ESP_LOGI(TAG, "New firmware validated, rollback cancelled");
+                DLOG_INFO("Firmware update done: v%s", esp_app_get_description()->version);
             } else {
                 ESP_LOGE(TAG, "mark_app_valid failed: %s", esp_err_to_name(merr));
             }
