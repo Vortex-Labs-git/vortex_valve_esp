@@ -3,41 +3,48 @@
 
 /**
  * @file device_log.h
- * @brief Main-process event log sent to the server (hub "Device log").
+ * @brief Device event log sent to the server (hub "Device log").
  *
- * device_log() can be called from any task. The entry is stamped with the
- * current time and queued; the MQTT publish task sends queued entries on
- * the SAME topic as errors:
- *   vortex_device/wifi_valve/<device_id>/error
- * as {"event":"valve_log","device_id","timestamp","level","msg"}.
- * The server tells them apart by "event": "valve_error" = current error
- * state (every 5 s), "valve_log" = one event.
+ * Only important events are logged, each ONCE, at the place it always
+ * passes through:
+ *   - errors            log_task watches valveData.error_msg
+ *   - valve operations  end of motor_set_angle()
+ *   - settings saved    eeprom_fn save functions (schedule, schedule mode,
+ *                       WiFi, motor calibration)
+ *   - restart + reason  device_log_init() at boot
+ *   - firmware update   ota_update_fn.c
  *
- * Only main events belong here (boot, mode change, valve moved, sensor
- * offline, schedule updated, OTA).
- * The same message repeated within DEVICE_LOG_REPEAT_SEC is dropped.
+ * Entries are kept in RTC memory, so they survive a restart / crash
+ * (not a power cut) and are sent when MQTT is connected (log_task.c), on
+ * the .../error topic as {"event":"valve_log",...,"level","msg"}.
  */
 
 #include <stdbool.h>
 
-#define DEVICE_LOG_MSG_LEN      96
-#define DEVICE_LOG_QUEUE_LEN    16      /* kept while MQTT is offline   */
-#define DEVICE_LOG_REPEAT_SEC   3600    /* same text again = dropped    */
+#define DEVICE_LOG_MSG_LEN      128
+#define DEVICE_LOG_BUF_LEN      20      /* entries kept until sent; oldest dropped when full */
+#define DEVICE_LOG_REPEAT_SEC   3600    /* same text again within this time = dropped */
 
 typedef struct {
-    char level[8];                      /* "info" | "warn"              */
+    char level[8];                      /* "error" | "warn" | "info" */
     char timestamp[32];
     char msg[DEVICE_LOG_MSG_LEN];
 } DeviceLogEntry;
 
+/* Call once at boot, after NVS init: restores unsent entries and logs the restart reason */
 void device_log_init(void);
+
 void device_log(const char *level, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
-/* Used by the MQTT publish task: look at the oldest entry, drop it once sent */
+#define DLOG_ERROR(...) device_log("error", __VA_ARGS__)
+#define DLOG_WARN(...)  device_log("warn",  __VA_ARGS__)
+#define DLOG_INFO(...)  device_log("info",  __VA_ARGS__)
+
+/* Restart with a reason; the reason is logged after the restart */
+void device_restart(const char *reason);
+
+/* Used by log_task: oldest unsent entry, removed once it is sent */
 bool device_log_peek(DeviceLogEntry *out);
 void device_log_drop(void);
-
-#define DLOG_INFO(...)  device_log("info", __VA_ARGS__)
-#define DLOG_WARN(...)  device_log("warn", __VA_ARGS__)
 
 #endif
