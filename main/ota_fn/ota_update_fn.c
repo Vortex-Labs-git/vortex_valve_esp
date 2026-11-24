@@ -169,13 +169,21 @@ static void ota_task(void *pvParameter) {
         if (err == ESP_OK) {
             ESP_LOGI(TAG, "OTA success, rebooting...");
             vTaskDelay(pdMS_TO_TICKS(1500));
-            esp_restart();
+            // esp_restart();
+
+            char reason[64];
+            snprintf(reason, sizeof(reason), "firmware update to v%s", req->version);
+            device_restart(reason);
         } else {
             ESP_LOGE(TAG, "OTA finish failed: %s", esp_err_to_name(err));
+
+            ota_log_failed(req->version, err);
         }
     } else {
         esp_https_ota_abort(handle);
         ESP_LOGE(TAG, "OTA failed: %s", esp_err_to_name(err));
+
+        ota_log_failed(req->version, err);
     }
 
     ota_running = false;
